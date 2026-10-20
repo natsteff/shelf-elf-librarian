@@ -1,0 +1,10 @@
+.build/
+.swiftpm/
+.DS_Store
+build-and-checks.log
+Screenshots/
+*.app/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+profiles.json
