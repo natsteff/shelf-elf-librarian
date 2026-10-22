@@ -553,9 +553,25 @@ final class FilerCoreTests {
     }
     func testPatternLiteralsValidationAndCustomFields() throws {
         let defaults = ProfileSetup.configured(.video, name: "Video")
+        for original in ["s01e10 - My Series - Claudio", "My Series - s01e10 - Claudio", "My Series - Claudio - s01e10"] {
+            let url = src.appendingPathComponent(original + ".mp4")
+            let f = Names.basicInterpret(url, defaults).0
+            XCTAssertEqual(f.season, "01"); XCTAssertEqual(f.episode, "10")
+            XCTAssertEqual(f.series, "My Series"); XCTAssertEqual(f.episodeTitle, "Claudio"); XCTAssertEqual(f.type, "TV Show")
+            XCTAssertEqual(Magic.suggestions(url: url, profile: defaults).first?.fields, f)
+        }
+        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Series - s01e01 - s01e02.mp4"), defaults).0.season, "")
+        let unstructured = Names.basicInterpret(src.appendingPathComponent("Unclear s02e03 text.mp4"), defaults).0
+        XCTAssertEqual(unstructured.season, "02"); XCTAssertEqual(unstructured.episode, "03"); XCTAssertEqual(unstructured.series, "")
+        for original in ["(1999) - My Favorite Movie", "(1999) My Favorite Movie", "1999 - My Favorite Movie", "My Favorite (1999) Movie"] {
+            let f = Names.basicInterpret(src.appendingPathComponent(original + ".mp4"), defaults).0
+            XCTAssertEqual(f.year, "1999"); XCTAssertEqual(f.title, "My Favorite Movie")
+        }
+        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("1999 My Favorite Movie.mp4"), defaults).0.year, "")
+        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Film (1999) (2000).mp4"), defaults).0.year, "")
         var previous = defaults
         previous.folderMask = "{TitleYear}"; previous.filenameMask = "{TitleYear}"
-        previous.workspacePatterns = defaults.workspacePatterns?.filter { !$0.pattern.contains("{Resolution}") }
+        previous.workspacePatterns = defaults.workspacePatterns?.filter { !$0.pattern.contains("{Resolution}") && !["{EpisodeID} - {Series} - {EpisodeTitle}", "{Series} - {EpisodeTitle} - {EpisodeID}", "{EpisodeIDAnywhere}", "({Year}) - {Title}", "({Year}) {Title}", "{Year} - {Title}", "{ParenthesizedYearAnywhere}"].contains($0.pattern) }
         let upgraded = ProfileSetup.updatingVideoDefaults(previous)
         XCTAssertEqual(upgraded.workspacePatterns?.count, defaults.workspacePatterns?.count)
         XCTAssertEqual(upgraded.filenameMask, "{Title} ({Year}) [{Resolution}]")

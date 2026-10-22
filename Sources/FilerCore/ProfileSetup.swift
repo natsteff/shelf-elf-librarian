@@ -35,10 +35,14 @@ public enum ProfileSetup {
             }
             p.classifications = types
         }
-        if var rules = p.workspacePatterns, rules.map(\.pattern) == PatternEngine.defaults(for: p).filter({ !$0.pattern.contains("{Resolution}") }).map(\.pattern), let fallback = rules.firstIndex(where: { $0.pattern == "{Title} [{Type}]" }) {
-            let additions = PatternEngine.defaults(for: p).filter { candidate in candidate.pattern.contains("{Resolution}") && !rules.contains(where: { $0.pattern == candidate.pattern }) }
-            rules.insert(contentsOf: additions, at: fallback)
-            p.workspacePatterns = rules
+        if let rules = p.workspacePatterns {
+            let current = PatternEngine.defaults(for: p)
+            let addedPatterns: Set<String> = ["{EpisodeID} - {Series} - {EpisodeTitle}", "{Series} - {EpisodeTitle} - {EpisodeID}", "{EpisodeIDAnywhere}", "({Year}) - {Title}", "({Year}) {Title}", "{Year} - {Title}", "{ParenthesizedYearAnywhere}"]
+            let previous = current.filter { !addedPatterns.contains($0.pattern) }
+            let older = previous.filter { !$0.pattern.contains("{Resolution}") }
+            if [previous, older].contains(where: { $0.map(\.pattern) == rules.map(\.pattern) && zip($0, rules).allSatisfy { $0.enabled == $1.enabled && $0.assignedType == $1.assignedType && !$1.compatibility } }) {
+                p.workspacePatterns = current.map { candidate in rules.first(where: { $0.pattern == candidate.pattern }) ?? candidate }
+            }
         }
         return p
     }

@@ -151,10 +151,39 @@ public enum PatternEngine {
                 let levels = rule.pattern.components(separatedBy: "/").count
                 input = url.deletingLastPathComponent().pathComponents.suffix(levels).joined(separator: "/")
             } else { input = original }
+            let episodeCandidates = (try? NSRegularExpression(pattern: #"(?i)(?<![\p{L}\p{N}])s\d{1,3}\s*e\d{1,3}(?![\p{L}\p{N}])"#))?.matches(in: input, range: NSRange(input.startIndex..., in: input)).count ?? 0
+            let inputYearCandidates = (try? NSRegularExpression(pattern: #"(?<!\d)(?:(?:19|20)\d{2}|2100)(?!\d)"#))?.matches(in: input, range: NSRange(input.startIndex..., in: input)).count ?? 0
+            // Explicit editable recognition rules, evaluated in the same order as ordinary masks.
+            if rule.pattern == "{EpisodeIDAnywhere}" || rule.pattern == "{ParenthesizedYearAnywhere}" {
+                let episode = rule.pattern == "{EpisodeIDAnywhere}"
+                let expression = episode ? #"(?i)(?<![\p{L}\p{N}])s(\d{1,3})\s*e(\d{1,3})(?![\p{L}\p{N}])"# : #"\(((?:(?:19|20)\d{2}|2100))\)"#
+                let regex = try! NSRegularExpression(pattern: expression)
+                let matches = regex.matches(in: input, range: NSRange(input.startIndex..., in: input))
+                guard matches.count == 1, let match = matches.first, episode || inputYearCandidates == 1 else { continue }
+                var f = Fields()
+                let remainder = (input as NSString).replacingCharacters(in: match.range, with: " ")
+                    .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-–—")))
+                if episode {
+                    f.season = (input as NSString).substring(with: match.range(at: 1))
+                    f.episode = (input as NSString).substring(with: match.range(at: 2))
+                    let sections = remainder.components(separatedBy: " - ").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    if sections.count == 2 { f.series = Names.cleanField(sections[0], p); f.episodeTitle = Names.cleanField(sections[1], p) }
+                    else { f.episodeTitle = Names.cleanField(remainder, p) }
+                } else {
+                    f.year = (input as NSString).substring(with: match.range(at: 1))
+                    f.title = Names.cleanField(remainder.replacingOccurrences(of: #"\s+-\s*$|^\s*-\s+"#, with: "", options: .regularExpression), p)
+                }
+                if !rule.assignedType.isEmpty && rule.assignedType != "@capture" { FieldCatalog.set(classificationKey(p), rule.assignedType, &f) }
+                record?("Workspace pattern \(index + 1)")
+                return (f, "Pattern \(index + 1): \(rule.pattern). " + (episode ? "Explicit episode marker; review Series and Episode title. Missing or ambiguous series requires review." : "One explicit parenthesized year; review title."), false)
+            }
             let delimiterExceptions = UniversalPreferences.entries(p.exceptions).filter { $0.contains("-") && !rule.pattern.localizedCaseInsensitiveContains($0) }.joined(separator: ", ")
             let protected = ProtectedSpellings(input, exceptions: delimiterExceptions)
             let matchingInput = protected.text
             guard let (regex, captures) = try? compiled(rule.pattern), let match = regex.firstMatch(in: matchingInput, range: NSRange(matchingInput.startIndex..., in: matchingInput)) else { continue }
+            let yearCandidates = (try? NSRegularExpression(pattern: #"(?<!\d)(?:(?:19|20)\d{2}|2100)(?!\d)"#))?.matches(in: input, range: NSRange(input.startIndex..., in: input)).count ?? 0
+            if captures.contains(where: { $0.key == "Year" }) && yearCandidates > 1 { continue }
+            if captures.contains(where: { $0.key == "EpisodeID" }) && episodeCandidates > 1 { continue }
             var f = Fields()
             for capture in captures {
                 let raw = protected.restore((matchingInput as NSString).substring(with: match.range(at: capture.group)))
@@ -179,7 +208,7 @@ public enum PatternEngine {
             if !rule.assignedType.isEmpty && rule.assignedType != "@capture" { FieldCatalog.set(key, rule.assignedType, &f) }
             else if rule.assignedType.isEmpty { FieldCatalog.set(key, "", &f) }
             let captured = FieldCatalog.get(key, f)
-            var warning = ""
+            var warning = yearCandidates > 1 && p.kind == .video ? " Multiple possible years; review Year rather than choosing automatically." : ""
             if let known = lookup(captured, profile: p) { FieldCatalog.set(key, known.name, &f) }
             else if !captured.isEmpty { warning = " Unrecognized \(key): \(captured); choose or add a value before filing." }
             Names.enrichYearAndRecording(&f, profile: p)
@@ -191,7 +220,7 @@ public enum PatternEngine {
     }
     public static func defaults(for p: Profile) -> [WorkspacePattern] {
         switch p.kind {
-        case .video: return [WorkspacePattern("{Series} - {EpisodeID} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID}", type: "TV Show"), WorkspacePattern("Commercial - {Title} ({Year})", type: "Commercial"), WorkspacePattern("Commercial - {Title}", type: "Commercial"), WorkspacePattern("Documentary - {Title} ({Year})", type: "Documentary"), WorkspacePattern("Documentary - {Title}", type: "Documentary"), WorkspacePattern("{Title} [Commercial]", type: "Commercial"), WorkspacePattern("{Title} ({Year}) [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} ({Year}) {Resolution}", type: "Movie"), WorkspacePattern("{Title} {Year} [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} {Year} {Resolution}", type: "Movie"), WorkspacePattern("{Title} [{Type}]", type: "@capture"), WorkspacePattern("{Title} ({Year})", type: "Movie"), WorkspacePattern("{Title} {Year}", type: "Movie"), WorkspacePattern("{Title}", type: "Movie")]
+        case .video: return [WorkspacePattern("{EpisodeID} - {Series} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeTitle} - {EpisodeID}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID}", type: "TV Show"), WorkspacePattern("{EpisodeIDAnywhere}", type: "TV Show"), WorkspacePattern("Commercial - {Title} ({Year})", type: "Commercial"), WorkspacePattern("Commercial - {Title}", type: "Commercial"), WorkspacePattern("Documentary - {Title} ({Year})", type: "Documentary"), WorkspacePattern("Documentary - {Title}", type: "Documentary"), WorkspacePattern("{Title} [Commercial]", type: "Commercial"), WorkspacePattern("{Title} ({Year}) [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} ({Year}) {Resolution}", type: "Movie"), WorkspacePattern("{Title} {Year} [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} {Year} {Resolution}", type: "Movie"), WorkspacePattern("({Year}) - {Title}", type: "Movie"), WorkspacePattern("({Year}) {Title}", type: "Movie"), WorkspacePattern("{Year} - {Title}", type: "Movie"), WorkspacePattern("{ParenthesizedYearAnywhere}", type: "Movie"), WorkspacePattern("{Title} [{Type}]", type: "@capture"), WorkspacePattern("{Title} ({Year})", type: "Movie"), WorkspacePattern("{Title} {Year}", type: "Movie"), WorkspacePattern("{Title}", type: "Movie")]
         case .music: return [WorkspacePattern("{TrackNumber} - {Artist} - {Title}"), WorkspacePattern("{Artist} - {Title}"), WorkspacePattern("{Title}")]
         case .audiobook: return [WorkspacePattern("{Author} - {Series} - {SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {Series} - #{SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {BookTitle} - {ChapterNumber}"), WorkspacePattern("{ChapterNumber} - {ChapterTitle}"), WorkspacePattern("{Author} - {BookTitle}"), WorkspacePattern("{BookTitle}")]
         case .roms: return [WorkspacePattern("{Title} [{System}]", type: "@capture"), WorkspacePattern("{Title}")]

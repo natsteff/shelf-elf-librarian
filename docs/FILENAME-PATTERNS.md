@@ -74,3 +74,9 @@ Output `{TitleYear} [{Resolution?}]` produces `Movie (2005) [720p]`, or `Movie (
 New video profiles use explicit movie folder `{Title} ({Year})` and filename `{Title} ({Year}) [{Resolution}]` masks. Both Year and Resolution are required for that filename; missing values block a proposal with a component-specific message. Users may choose `[{Resolution?}]` for optional resolution instead. TV Show mappings retain Series/Season folders and episode filenames.
 
 Default ordered input patterns recognize trailing years (1900–2100) with bare or bracketed numeric p/i resolution labels before generic Type or Title patterns. Leading title numbers are retained. Magic uses the same configured interpretation first; alternatives remain manual. No dimension inference or DVD/Blu-ray source detection is performed. Literal output characters and labels are preserved. Only unchanged shipped defaults are upgraded; custom input sequences and masks are retained.
+
+### Episode and year positions
+
+Video defaults include EpisodeID-first and EpisodeID-last patterns. The ordered, editable `{EpisodeIDAnywhere}` recognition rule captures one standalone S/E identifier anywhere; when remaining text has two clear ` - ` sections, they become Series and EpisodeTitle. Otherwise Series remains blank for review. Multiple episode identifiers are not guessed.
+
+Year-first defaults accept `({Year}) - {Title}`, `({Year}) {Title}`, and `{Year} - {Title}`. `{ParenthesizedYearAnywhere}` recognizes one explicit parenthesized year (1900–2100) and removes surrounding edge separators. Multiple candidate years require review. Bare leading years without a separator remain in Title; manual Magic may offer a limited-evidence alternative. Output structure remains determined by the user's masks. Upgrades only extend unchanged shipped input sequences; custom sequences retain their order and contents.
