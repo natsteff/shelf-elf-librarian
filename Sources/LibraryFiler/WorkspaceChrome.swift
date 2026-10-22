@@ -20,9 +20,9 @@ struct WorkspaceProfilePicker: View {
     var body: some View {
         HStack(spacing: 8) {
             Group {
-                Label(m.active.rules.useMagic ? "Magic enabled" : "Magic disabled", systemImage: "wand.and.stars").fixedSize().foregroundStyle(.secondary)
-                    .accessibilityLabel(m.active.rules.useMagic ? "Magic enabled" : "Magic disabled")
-                    .instantHelp(m.active.rules.useMagic ? "Magic is enabled for this profile. Run Magic starts manual analysis of selected visible files." : "Magic is disabled for this profile. Enable it in Profile Settings.")
+                Label(m.active.rules.useMagic ? "Magic available" : "Magic off", systemImage: "wand.and.stars").fixedSize().foregroundStyle(.secondary)
+                    .accessibilityLabel(m.active.rules.useMagic ? "Magic available" : "Magic off")
+                    .instantHelp(m.active.rules.useMagic ? "Magic is available for this profile. Click Run Magic to analyze selected visible files, then confirm Copy or Move. It does not run in the background." : "Magic is off for this profile. Turn it on in Profile Settings to make Run Magic available.")
             }
             Picker("Library profile", selection: $m.activeID) {
                 if m.profiles.isEmpty { Text("No profiles — open Settings").tag(m.activeID) }

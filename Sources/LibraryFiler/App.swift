@@ -875,6 +875,7 @@ struct SettingsView: View {
     let savedProfileName: String
     @State var confirmDelete = false
     @State var validation = ""
+    @State private var validationScrollRequest = 0
     init(profile: Profile, existing: Bool, save: @escaping (Profile) -> Void, delete: @escaping (UUID) throws -> Void) {
         _draft = State(initialValue: profile); self.save = save; self.delete = delete
         savedProfileID = existing ? profile.id : nil; savedProfileName = profile.name
@@ -883,12 +884,13 @@ struct SettingsView: View {
         ScrollViewReader { scroll in
         VStack(alignment: .leading) {
             Text("Profile Settings: " + (draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "New Profile" : draft.name)).font(.title2.bold()).lineLimit(2)
-            ScrollView { Form {
+            Form {
                 ProfileSettingsContent(profile: $draft, validation: $validation,
                     patterns: { showPatterns = true }, guide: { showMaskGuide = true },
                     general: { showGeneral = true }, recommendations: { showRecommendations = true })
-                if !validation.isEmpty { Text(validation).foregroundStyle(.red).id("profileValidation") }
-            }.formStyle(.grouped).textFieldStyle(.roundedBorder) }
+                if !validation.isEmpty { Text(validation).foregroundStyle(.red).id("profileValidation")
+                    .background(ValidationScrollAnchor(request: validationScrollRequest)) }
+            }.formStyle(.grouped).textFieldStyle(.roundedBorder)
             Divider().padding(.top, 8).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 12) {
             if let id = savedProfileID, draft.id == id {
@@ -897,7 +899,7 @@ struct SettingsView: View {
                     Text("Removes settings only. Library files stay untouched.").font(.caption).foregroundStyle(.secondary)
                 }.padding(.bottom, 6)
             }
-            HStack { Button("Duplicate as New Profile") { draft.id = UUID(); draft.name += " Copy" }; Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save") { do { draft.rootAllowed = true; draft.exceptions = ""; try draft.validate(); save(draft); dismiss() } catch { validation = error.localizedDescription; DispatchQueue.main.async { withAnimation { scroll.scrollTo("profileValidation", anchor: .bottom) } } } }.keyboardShortcut(.defaultAction) }
+            HStack { Button("Duplicate as New Profile") { draft.id = UUID(); draft.name += " Copy" }; Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save") { do { draft.rootAllowed = true; draft.exceptions = ""; try draft.validate(); save(draft); dismiss() } catch { validation = error.localizedDescription; validationScrollRequest += 1; DispatchQueue.main.async { withAnimation { scroll.scrollTo("profileValidation", anchor: .bottom) } } } }.keyboardShortcut(.defaultAction) }
             }.padding(.top, 2).padding(.bottom, 4)
         }.padding()
         }

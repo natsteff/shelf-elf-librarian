@@ -5,6 +5,8 @@ import FilerCore
 /// One settings flow for every content type; examples and specialized controls follow the profile.
 struct ProfileSettingsContent: View {
     @EnvironmentObject var model: Model
+    @State private var notesHeight: CGFloat = 150
+    @State private var notesDragStart: CGFloat?
     @Binding var profile: Profile
     @Binding var validation: String
     var patterns: () -> Void
@@ -79,7 +81,27 @@ struct ProfileSettingsContent: View {
             SettingsInput(title: "Profile name", text: $profile.name, example: profile.kind.label + " Library")
             VStack(alignment: .leading) {
                 Text("Description / Notes").font(.caption.bold())
-                TextEditor(text: Binding(get: { profile.notes ?? "" }, set: { profile.notes = $0 })).frame(minHeight: 65, maxHeight: 100)
+                TextEditor(text: Binding(get: { profile.notes ?? "" }, set: { profile.notes = $0 }))
+                    .font(.system(size: NSFont.systemFontSize)).frame(height: notesHeight)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.3)))
+                HStack(spacing: 5) {
+                    Spacer()
+                    Text("Drag to resize").font(.caption).foregroundStyle(.secondary)
+                    Image(systemName: "arrow.up.and.down").font(.caption).foregroundStyle(.secondary)
+                }.frame(height: 16).contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                        if notesDragStart == nil { notesDragStart = notesHeight }
+                        notesHeight = min(500, max(98, (notesDragStart ?? 150) + value.translation.height))
+                    }.onEnded { _ in notesDragStart = nil })
+                    .accessibilityElement(children: .ignore).accessibilityLabel("Resize description and notes")
+                    .accessibilityValue("\(Int(notesHeight)) points high")
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment: notesHeight = min(500, notesHeight + 30)
+                        case .decrement: notesHeight = max(98, notesHeight - 30)
+                        @unknown default: break
+                        }
+                    }
             }
             Picker("Content type", selection: $profile.kind) { ForEach(Kind.allCases) { Text($0.label).tag($0) } }
             if profile.kind == .audiobook {
