@@ -19,10 +19,10 @@ struct WorkspaceProfilePicker: View {
     @EnvironmentObject var m: Model
     var body: some View {
         HStack(spacing: 8) {
-            if m.active.rules.useMagic {
-                Label("Magic enabled", systemImage: "wand.and.stars").fixedSize().foregroundStyle(.secondary)
-                    .accessibilityLabel("Magic enabled")
-                    .instantHelp("Magic is enabled for this profile. Run Magic starts manual analysis of selected visible files.")
+            Group {
+                Label(m.active.rules.useMagic ? "Magic enabled" : "Magic disabled", systemImage: "wand.and.stars").fixedSize().foregroundStyle(.secondary)
+                    .accessibilityLabel(m.active.rules.useMagic ? "Magic enabled" : "Magic disabled")
+                    .instantHelp(m.active.rules.useMagic ? "Magic is enabled for this profile. Run Magic starts manual analysis of selected visible files." : "Magic is disabled for this profile. Enable it in Profile Settings.")
             }
             Picker("Library profile", selection: $m.activeID) {
                 if m.profiles.isEmpty { Text("No profiles — open Settings").tag(m.activeID) }

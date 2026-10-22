@@ -13,8 +13,34 @@ public enum ProfileSetup {
         profile.name = name; profile.schemaVersion = 2; profile.rootAllowed = true
         profile.classifications = PatternEngine.defaultTypes(for: kind)
         profile.workspacePatterns = PatternEngine.defaults(for: profile)
+        if kind == .video { profile.folderMask = "{Title} ({Year})"; profile.filenameMask = "{Title} ({Year}) [{Resolution}]" }
         profile.extractionMask = ""
         return profile
+    }
+    /// Upgrade only the exact shipped movie defaults; custom masks and ordered rules are retained.
+    public static func updatingVideoDefaults(_ input: Profile) -> Profile {
+        guard input.kind == .video else { return input }
+        var p = input
+        if p.folderMask == "{TitleYear}" { p.folderMask = "{Title} ({Year})" }
+        if p.filenameMask == "{TitleYear}" { p.filenameMask = "{Title} ({Year}) [{Resolution}]" }
+        if var types = p.classifications {
+            for i in types.indices {
+                if types[i].name == "Movie", types[i].folderMask == "Movies/{TitleYear}" {
+                    types[i].folderMask = "Movies/{Title} ({Year})"
+                    if types[i].filenameMask == nil { types[i].filenameMask = "{Title} ({Year}) [{Resolution}]" }
+                }
+                if types[i].name == "TV Show", types[i].filenameMask == nil {
+                    types[i].filenameMask = "{Series} - {EpisodeID} - {EpisodeTitle}"
+                }
+            }
+            p.classifications = types
+        }
+        if var rules = p.workspacePatterns, rules.map(\.pattern) == PatternEngine.defaults(for: p).filter({ !$0.pattern.contains("{Resolution}") }).map(\.pattern), let fallback = rules.firstIndex(where: { $0.pattern == "{Title} [{Type}]" }) {
+            let additions = PatternEngine.defaults(for: p).filter { candidate in candidate.pattern.contains("{Resolution}") && !rules.contains(where: { $0.pattern == candidate.pattern }) }
+            rules.insert(contentsOf: additions, at: fallback)
+            p.workspacePatterns = rules
+        }
+        return p
     }
     public static var starterProfiles: [Profile] {
         var video = configured(.video, name: "Video Media Server")

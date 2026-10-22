@@ -219,8 +219,12 @@ struct WorkspaceSession: Codable {
                 try JSONEncoder().encode(migrated).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
                 profiles = migrated
             }
-            let described = profiles.map { StarterDescriptions.fillingBlankNotes($0) }
+            let described = profiles.map { StarterDescriptions.fillingBlankNotes(ProfileSetup.updatingVideoDefaults($0)) }
             if described != profiles {
+                if profiles.map({ ProfileSetup.updatingVideoDefaults($0) }) != profiles {
+                    let backup = support.appendingPathComponent("Settings before video defaults update-\(UUID().uuidString).json")
+                    try JSONEncoder().encode(SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: nil)).write(to: backup, options: .atomic)
+                }
                 try JSONEncoder().encode(described).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
                 profiles = described
             }
@@ -526,6 +530,19 @@ struct MainView: View {
     var version: String { AppIdentity.version }
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                    WorkspaceProfilePicker().environmentObject(m)
+                    Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
+                        .labelStyle(.iconOnly).instantHelp("Profile Settings")
+                    Button { m.showGeneralSettings = true } label: { Label("General Settings", systemImage: "slider.horizontal.3") }
+                        .labelStyle(.iconOnly).instantHelp("General Settings")
+                    Button { m.loadHistory(); m.showHistory = true } label: { Label("History", systemImage: "clock") }
+                        .labelStyle(.iconOnly).instantHelp("History & Undo")
+                    Spacer(minLength: 20)
+                    WorkspaceBrand()
+                }.disabled(m.busy || showSplash)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+            Divider()
             WorkspaceLocationBar().environmentObject(m)
             Divider()
             WorkspaceActionBar().environmentObject(m)
@@ -589,21 +606,6 @@ struct MainView: View {
         }
         .background(MainWindowAppearance())
         .disabled(m.busy || showSplash)
-        .toolbar {
-            UnsharedToolbarItem(placement: .confirmationAction) {
-                HStack(spacing: 12) {
-                    WorkspaceProfilePicker().environmentObject(m)
-                    Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
-                        .labelStyle(.iconOnly).instantHelp("Profile Settings")
-                    Button { m.showGeneralSettings = true } label: { Label("General Settings", systemImage: "slider.horizontal.3") }
-                        .labelStyle(.iconOnly).instantHelp("General Settings")
-                    Button { m.loadHistory(); m.showHistory = true } label: { Label("History", systemImage: "clock") }
-                        .labelStyle(.iconOnly).instantHelp("History & Undo")
-                    Divider().frame(height: 28)
-                    WorkspaceBrand()
-                }.disabled(m.busy || showSplash)
-            }
-        }
         .overlay {
             if showSplash {
                 SplashView { withAnimation(.easeOut(duration: 0.2)) { showSplash = false } }

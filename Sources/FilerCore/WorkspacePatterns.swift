@@ -83,7 +83,8 @@ public enum PatternEngine {
                 expression += #"([sS]\s*\d{1,3}\s*[eE]\s*\d{1,3})"#
             } else {
                 guard FieldCatalog.keys[key] != nil || key.range(of: "^[A-Za-z][A-Za-z0-9]{0,39}$", options: .regularExpression) != nil else { throw fail("Invalid input component: \(key)") }
-                if key == "Year" { expression += #"((?:19|20)\d{2})"# }
+                if key == "Year" { expression += #"((?:(?:19|20)\d{2}|2100))"# }
+                else if key == "Resolution" { expression += #"(\d{3,4}[pPiI])"# }
                 else if ["Season", "Episode", "ChapterNumber", "TrackNumber", "SeriesNumber", "IssueNumber", "Volume"].contains(key) { expression += #"(\d+(?:\.\d+)?)"# }
                 else { expression += "(.+?)" }
             }
@@ -190,7 +191,7 @@ public enum PatternEngine {
     }
     public static func defaults(for p: Profile) -> [WorkspacePattern] {
         switch p.kind {
-        case .video: return [WorkspacePattern("{Series} - {EpisodeID} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID}", type: "TV Show"), WorkspacePattern("Commercial - {Title} ({Year})", type: "Commercial"), WorkspacePattern("Commercial - {Title}", type: "Commercial"), WorkspacePattern("Documentary - {Title} ({Year})", type: "Documentary"), WorkspacePattern("Documentary - {Title}", type: "Documentary"), WorkspacePattern("{Title} [Commercial]", type: "Commercial"), WorkspacePattern("{Title} [{Type}]", type: "@capture"), WorkspacePattern("{Title} ({Year})", type: "Movie"), WorkspacePattern("{Title} {Year}", type: "Movie"), WorkspacePattern("{Title}", type: "Movie")]
+        case .video: return [WorkspacePattern("{Series} - {EpisodeID} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID}", type: "TV Show"), WorkspacePattern("Commercial - {Title} ({Year})", type: "Commercial"), WorkspacePattern("Commercial - {Title}", type: "Commercial"), WorkspacePattern("Documentary - {Title} ({Year})", type: "Documentary"), WorkspacePattern("Documentary - {Title}", type: "Documentary"), WorkspacePattern("{Title} [Commercial]", type: "Commercial"), WorkspacePattern("{Title} ({Year}) [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} ({Year}) {Resolution}", type: "Movie"), WorkspacePattern("{Title} {Year} [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} {Year} {Resolution}", type: "Movie"), WorkspacePattern("{Title} [{Type}]", type: "@capture"), WorkspacePattern("{Title} ({Year})", type: "Movie"), WorkspacePattern("{Title} {Year}", type: "Movie"), WorkspacePattern("{Title}", type: "Movie")]
         case .music: return [WorkspacePattern("{TrackNumber} - {Artist} - {Title}"), WorkspacePattern("{Artist} - {Title}"), WorkspacePattern("{Title}")]
         case .audiobook: return [WorkspacePattern("{Author} - {Series} - {SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {Series} - #{SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {BookTitle} - {ChapterNumber}"), WorkspacePattern("{ChapterNumber} - {ChapterTitle}"), WorkspacePattern("{Author} - {BookTitle}"), WorkspacePattern("{BookTitle}")]
         case .roms: return [WorkspacePattern("{Title} [{System}]", type: "@capture"), WorkspacePattern("{Title}")]
@@ -201,7 +202,7 @@ public enum PatternEngine {
     }
     public static func defaultTypes(for kind: Kind) -> [FilingType] {
         if kind == .video {
-            return [FilingType("Movie", aliases: "Movies", folderMask: "Movies/{TitleYear}"), FilingType("TV Show", aliases: "TV, TV Shows", folderMask: "TV Shows/{Series}/Season {Season:02}"), FilingType("Documentary", aliases: "Documentaries", folderMask: "Documentaries/{TitleYear}"), FilingType("Commercial", aliases: "Commercials", folderMask: "Commercials"), FilingType("Home Video", aliases: "Home Videos", folderMask: "Home Videos"), FilingType("Music Video", aliases: "Music Videos", folderMask: "Music Videos/{Title}"), FilingType("TV Show (Children)", folderMask: "TV Shows (Children)/{Series}/Season {Season:02}"), FilingType("Movie (Children)", folderMask: "Movies (Children)/{TitleYear}")]
+            return [FilingType("Movie", aliases: "Movies", folderMask: "Movies/{Title} ({Year})", filenameMask: "{Title} ({Year}) [{Resolution}]"), FilingType("TV Show", aliases: "TV, TV Shows", folderMask: "TV Shows/{Series}/Season {Season:02}", filenameMask: "{Series} - {EpisodeID} - {EpisodeTitle}"), FilingType("Documentary", aliases: "Documentaries", folderMask: "Documentaries/{TitleYear}"), FilingType("Commercial", aliases: "Commercials", folderMask: "Commercials"), FilingType("Home Video", aliases: "Home Videos", folderMask: "Home Videos"), FilingType("Music Video", aliases: "Music Videos", folderMask: "Music Videos/{Title}"), FilingType("TV Show (Children)", folderMask: "TV Shows (Children)/{Series}/Season {Season:02}"), FilingType("Movie (Children)", folderMask: "Movies (Children)/{TitleYear}")]
         }
         if kind == .roms { return [FilingType("NES", aliases: "Nintendo Entertainment System"), FilingType("SNES", aliases: "Super Nintendo, SFC"), FilingType("Game Boy", aliases: "GB"), FilingType("Game Boy Color", aliases: "GBC"), FilingType("Game Boy Advance", aliases: "GBA"), FilingType("Nintendo 64", aliases: "N64"), FilingType("Nintendo DS", aliases: "NDS"), FilingType("PlayStation", aliases: "PS1, PSX"), FilingType("PlayStation 2", aliases: "PS2"), FilingType("Genesis", aliases: "Mega Drive")] }
         return []

@@ -552,6 +552,29 @@ final class FilerCoreTests {
         XCTAssertEqual(try proposedFilename(Item(url: tvURL, size: 0, fields: f, evidence: "", reviewed: false), profile: video), "Ad - Sale.mp4")
     }
     func testPatternLiteralsValidationAndCustomFields() throws {
+        let defaults = ProfileSetup.configured(.video, name: "Video")
+        var previous = defaults
+        previous.folderMask = "{TitleYear}"; previous.filenameMask = "{TitleYear}"
+        previous.workspacePatterns = defaults.workspacePatterns?.filter { !$0.pattern.contains("{Resolution}") }
+        let upgraded = ProfileSetup.updatingVideoDefaults(previous)
+        XCTAssertEqual(upgraded.workspacePatterns?.count, defaults.workspacePatterns?.count)
+        XCTAssertEqual(upgraded.filenameMask, "{Title} ({Year}) [{Resolution}]")
+        XCTAssertEqual(ProfileSetup.updatingVideoDefaults(upgraded), upgraded)
+        for original in ["Kingdom of Heaven (Extended Version) 2005 1280p.mp4", "Kingdom of Heaven (Extended Version) (2005) [1280P].mp4"] {
+            let url = src.appendingPathComponent(original)
+            let fields = Names.basicInterpret(url, defaults).0
+            XCTAssertEqual(fields.year, "2005"); XCTAssertEqual(fields.resolution, "1280p")
+            XCTAssertEqual(fields.type, "Movie")
+            XCTAssertEqual(Magic.suggestions(url: url, profile: defaults).first?.fields, fields)
+            XCTAssertTrue(try Names.render(PatternEngine.filenameMask(for: fields, profile: defaults), fields: fields, profile: defaults, source: url, folder: false).hasSuffix("(2005) [1280p]"))
+        }
+        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("2001 A Space Odyssey.mp4"), defaults).0.year, "")
+        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Film (2100).mp4"), defaults).0.year, "2100")
+        let missing = Names.basicInterpret(src.appendingPathComponent("Film (2005).mp4"), defaults).0
+        XCTAssertThrowsError(try Names.render(defaults.filenameMask, fields: missing, profile: defaults, source: src, folder: false))
+        var custom = defaults; custom.filenameMask = "{Title}, {Year}"; custom.folderMask = "{Title}"
+        XCTAssertEqual(ProfileSetup.updatingVideoDefaults(custom).filenameMask, custom.filenameMask)
+        XCTAssertEqual(ProfileSetup.updatingVideoDefaults(custom).folderMask, custom.folderMask)
         var video = ProfileSetup.configured(.video, name: "Video")
         video.workspacePatterns = [WorkspacePattern("{Title} {Year} {Resolution}", type: "Movie")]
         video.filenameMask = "{TitleYear} [{Resolution?}]"
@@ -654,9 +677,9 @@ final class FilerCoreTests {
         let url = src.appendingPathComponent("Story (2001).mp4"); try Data("bytes".utf8).write(to: url)
         let scan = try scan(src, profile: video, recursive: false)
         var item = try XCTUnwrap(scan.items.first); XCTAssertTrue(item.alternatives.isEmpty)
-        item.reviewed = true
+        item.reviewed = true; item.fields.resolution = "720p"
         let plan = try makePlan(items: [item], profile: video, mode: .copy, category: "", fileOnly: false)
-        XCTAssertTrue(plan.rows[0].destination.hasSuffix("Movies/Story (2001)/Story (2001).mp4"))
+        XCTAssertTrue(plan.rows[0].destination.hasSuffix("Movies/Story (2001)/Story (2001) [720p].mp4"))
         XCTAssertEqual(try executor().execute(plan).completed, 1)
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
