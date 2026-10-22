@@ -574,7 +574,7 @@ final class FilerCoreTests {
         previous.workspacePatterns = defaults.workspacePatterns?.filter { !$0.pattern.contains("{Resolution}") && !["{EpisodeID} - {Series} - {EpisodeTitle}", "{Series} - {EpisodeTitle} - {EpisodeID}", "{EpisodeIDAnywhere}", "({Year}) - {Title}", "({Year}) {Title}", "{Year} - {Title}", "{ParenthesizedYearAnywhere}"].contains($0.pattern) }
         let upgraded = ProfileSetup.updatingVideoDefaults(previous)
         XCTAssertEqual(upgraded.workspacePatterns?.count, defaults.workspacePatterns?.count)
-        XCTAssertEqual(upgraded.filenameMask, "{Title} ({Year}) [{Resolution}]")
+        XCTAssertEqual(upgraded.filenameMask, "{Title} ({Year}) [{Resolution?}]")
         XCTAssertEqual(ProfileSetup.updatingVideoDefaults(upgraded), upgraded)
         for original in ["Kingdom of Heaven (Extended Version) 2005 1280p.mp4", "Kingdom of Heaven (Extended Version) (2005) [1280P].mp4"] {
             let url = src.appendingPathComponent(original)
@@ -587,7 +587,14 @@ final class FilerCoreTests {
         XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("2001 A Space Odyssey.mp4"), defaults).0.year, "")
         XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Film (2100).mp4"), defaults).0.year, "2100")
         let missing = Names.basicInterpret(src.appendingPathComponent("Film (2005).mp4"), defaults).0
-        XCTAssertThrowsError(try Names.render(defaults.filenameMask, fields: missing, profile: defaults, source: src, folder: false))
+        XCTAssertEqual(try Names.render(defaults.filenameMask, fields: missing, profile: defaults, source: src, folder: false), "Film (2005)")
+        XCTAssertThrowsError(try Names.render("{Title} ({Year}) [{Resolution}]", fields: missing, profile: defaults, source: src, folder: false))
+        var requiredDefault = defaults
+        requiredDefault.filenameMask = "{Title} ({Year}) [{Resolution}]"
+        requiredDefault.classifications?[0].filenameMask = requiredDefault.filenameMask
+        let optionalDefault = ProfileSetup.updatingVideoDefaults(requiredDefault)
+        XCTAssertEqual(optionalDefault.filenameMask, "{Title} ({Year}) [{Resolution?}]")
+        XCTAssertEqual(optionalDefault.classifications?[0].filenameMask, "{Title} ({Year}) [{Resolution?}]")
         var custom = defaults; custom.filenameMask = "{Title}, {Year}"; custom.folderMask = "{Title}"
         XCTAssertEqual(ProfileSetup.updatingVideoDefaults(custom).filenameMask, custom.filenameMask)
         XCTAssertEqual(ProfileSetup.updatingVideoDefaults(custom).folderMask, custom.folderMask)

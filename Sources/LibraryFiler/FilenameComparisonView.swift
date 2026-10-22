@@ -68,6 +68,10 @@ struct FilenameComparisonView: View {
     }
     private var highlight: Bool { m.universalPreferences.showFilenameDifferences ?? true }
     private var basename: String { (try? proposedBasename(item, profile: m.active)) ?? "" }
+    private var proposalError: String? {
+        do { _ = try proposedFilename(item, profile: m.active); return nil }
+        catch { return error.localizedDescription }
+    }
     private var filename: String { (try? proposedFilename(item, profile: m.active)) ?? item.url.lastPathComponent }
     private var sourceBasename: String { item.url.deletingPathExtension().lastPathComponent }
     private var spellingKey: String { sourceBasename + "\n" + m.sharedExceptions + "\n" + String(m.universalPreferences.flagUnrecognizedWords ?? true) }
@@ -85,6 +89,7 @@ struct FilenameComparisonView: View {
             DirectFilenameEditor(item: item, nameMatches: nameMatches,
                 highlightedProposal: differenceText(basename, changes: difference.inserted, source: false, highlight: highlight), changedCharacters: highlight ? difference.inserted : [], comparison: difference)
                 .environmentObject(m)
+            if let proposalError { Text(proposalError).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             if difference.changed || !unrecognized.isEmpty {
                 Button { expanded.toggle() } label: {
                     Label(expanded ? "Hide changes" : "Show changes", systemImage: expanded ? "chevron.up" : "chevron.down")

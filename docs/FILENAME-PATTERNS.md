@@ -71,7 +71,7 @@ Output `{TitleYear} [{Resolution?}]` produces `Movie (2005) [720p]`, or `Movie (
 
 ### Movie defaults
 
-New video profiles use explicit movie folder `{Title} ({Year})` and filename `{Title} ({Year}) [{Resolution}]` masks. Both Year and Resolution are required for that filename; missing values block a proposal with a component-specific message. Users may choose `[{Resolution?}]` for optional resolution instead. TV Show mappings retain Series/Season folders and episode filenames.
+New video profiles use explicit movie folder `{Title} ({Year})` and filename `{Title} ({Year}) [{Resolution?}]` masks. Year is required; Resolution is optional and its brackets are omitted when blank. Users may remove `?` to require Resolution instead. Missing required values are displayed below the filename editor. TV Show mappings retain Series/Season folders and episode filenames.
 
 Default ordered input patterns recognize trailing years (1900–2100) with bare or bracketed numeric p/i resolution labels before generic Type or Title patterns. Leading title numbers are retained. Magic uses the same configured interpretation first; alternatives remain manual. No dimension inference or DVD/Blu-ray source detection is performed. Literal output characters and labels are preserved. Only unchanged shipped defaults are upgraded; custom input sequences and masks are retained.
 
