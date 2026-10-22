@@ -7,13 +7,32 @@ public enum FilerError: Error, LocalizedError {
     public var errorDescription: String? { if case .message(let s) = self { return s }; return nil }
 }
 public func fail(_ s: String) -> FilerError { .message(s) }
-public enum Kind: String, Codable, CaseIterable, Identifiable { case video, music, audiobook, documents, other; public var id: String { rawValue } }
+public enum Kind: String, Codable, CaseIterable, Identifiable { case video, music, audiobook, documents, roms, photos, software, other; public var id: String { rawValue } }
+public extension Kind {
+    var label: String { switch self { case .video: return "Video"; case .music: return "Music"; case .audiobook: return "Books & Comics"; case .documents: return "Documents"; case .roms: return "Video Game ROMs"; case .photos: return "Photos"; case .software: return "Software & Installers"; case .other: return "Other / Custom" } }
+}
+public enum BookSubtype: String, Codable, CaseIterable, Identifiable {
+    case general, audiobook, ebook, comic
+    public var id: String { rawValue }
+    public var label: String { switch self { case .general: return "Books & Comics (mixed)"; case .audiobook: return "Audiobook"; case .ebook: return "Ebook"; case .comic: return "Comic" } }
+}
+public enum RecordingKind: String, CaseIterable, Identifiable {
+    case unspecified = "", live = "Live", studio = "Studio"
+    public var id: String { rawValue }
+    public var label: String { self == .unspecified ? "Unspecified" : rawValue }
+}
 public enum Mode: String, Codable, CaseIterable, Identifiable { case copy, move, clean; public var id: String { rawValue } }
 public struct Profile: Codable, Identifiable, Equatable {
     public var id = UUID()
     public var schemaVersion = 1
     public var name: String
+    public var notes: String?
     public var kind: Kind
+    public var workspacePatterns: [WorkspacePattern]?
+    public var classifications: [FilingType]?
+    public var classificationComponent: String?
+    public var bookSubtype: BookSubtype?
+    public var effectiveBookSubtype: BookSubtype { bookSubtype ?? .audiobook }
     public var root = ""
     public var bookmark: Data?
     public var rootIdentity: DirectoryIdentity?
@@ -31,24 +50,43 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var filenameMask: String
     public var individualTracks = ""
     public var bucket = true
+    public var rememberCorrectionsByDefault: Bool?
+    public var preparation: PreparationRules?
+    public var rules: PreparationRules { get { preparation ?? PreparationRules() } set { preparation = newValue } }
     public var rootAllowed = false
     public var fixedCategory = ""
-    public init(_ kind: Kind) {
-        self.kind = kind
+    public init(_ kind: Kind, bookSubtype: BookSubtype? = nil) {
+        self.kind = kind; self.bookSubtype = bookSubtype
         switch kind {
         case .video: name = "Movies — Demo"; extensions = "mkv, mp4, m4v, avi, mov"; folderMask = "{TitleYear}"; filenameMask = "{TitleYear}"; removeTokens = "1080p, WEB-DL"
         case .music: name = "Music — Demo"; extensions = "mp3, flac, m4a, aac, wav, aiff"; folderMask = "{Bucket}/{Artist}/{AlbumOrIndividual}"; filenameMask = "{Artist} - {Title}"
         case .audiobook: name = "Audiobooks — Demo"; extensions = "m4b, mp3"; folderMask = "{Author}/{BookTitle}"; filenameMask = "{ChapterOrBook}"
         case .documents: name = "Documents — Demo"; extensions = "pdf"; folderMask = ""; filenameMask = "{Title}"; replaceDots = false
+        case .roms: name = "Video Game ROMs"; extensions = "nes, sfc, smc, gb, gbc, gba, n64, z64, nds, 3ds, chd, iso, cue, bin, zip, 7z"; folderMask = "{System}"; filenameMask = "{Title}"; titleCase = false; replaceDots = false
+        case .photos: name = "Photos"; extensions = "jpg, jpeg, png, heic, tiff, raw, dng"; folderMask = ""; filenameMask = "{Title}"; titleCase = false; replaceDots = false
+        case .software: name = "Software & Installers"; extensions = "dmg, pkg, exe, msi, iso, zip, 7z, deb, rpm, appimage"; folderMask = "{Product}"; filenameMask = "{Title}"; titleCase = false; replaceDots = false
         case .other:
             name = "Other / Custom"; extensions = ""; folderMask = ""; filenameMask = "{Title}"
             replaceUnderscores = false; replaceDots = false; titleCase = false; normalizeSpaces = false
             exceptions = ""; bucket = false
         }
+        if kind == .audiobook, let bookSubtype, bookSubtype != .audiobook {
+            name = "Books & Comics"; folderMask = "{Author}"; filenameMask = "{BookTitle}"
+            switch bookSubtype {
+            case .general: extensions = "epub, pdf, mobi, azw3, cbz, cbr, m4b, mp3"
+            case .ebook: extensions = "epub, pdf, mobi, azw3"
+            case .comic: extensions = "cbz, cbr, pdf"
+            case .audiobook: break
+            }
+        }
     }
+    public var supportsEpisodes: Bool { kind == .video || kind == .music || (kind == .audiobook && (effectiveBookSubtype == .audiobook || effectiveBookSubtype == .general)) }
     public var accepted: Set<String> { Set(extensions.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) }.filter { !$0.isEmpty }) }
     public func validate() throws {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty, !accepted.isEmpty else { throw fail("Profile needs a name and file extensions.") }
+        try rules.validate()
+        try PatternEngine.validate(self)
+        guard !folderMask.hasPrefix("/") else { throw fail("Folder masks must be relative, not absolute paths.") }
         if !fixedCategory.isEmpty { try component(fixedCategory) }
         if !individualTracks.isEmpty { try component(individualTracks) }
         if !root.isEmpty { _ = try Directory(root) }
@@ -56,7 +94,50 @@ public struct Profile: Codable, Identifiable, Equatable {
 }
 public struct Fields: Codable, Equatable {
     public var title = "", year = "", artist = "", album = "", author = "", bookTitle = "", chapterNumber = "", chapterTitle = ""
+    public var series = "", season = "", episode = "", episodeTitle = "", date = "", revision = ""
+    public var narrator = "", publisher = "", illustrator = "", issueNumber = "", volume = "", seriesNumber = "", trackNumber = "", recordingType = ""
+    public var type = "", system = "", genre = "", game = "", product = "", version = "", platform = "", architecture = "", dateTaken = "", event = "", region = "", edition = ""
+    public var custom: [String: String]?
     public init() {}
+    enum CodingKeys: String, CodingKey { case title, year, artist, album, author, bookTitle, chapterNumber, chapterTitle, series, season, episode, episodeTitle, date, revision, narrator, publisher, illustrator, issueNumber, volume, seriesNumber, trackNumber, recordingType, type, system, genre, game, product, version, platform, architecture, dateTaken, event, region, edition, custom }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        year = try c.decodeIfPresent(String.self, forKey: .year) ?? ""
+        artist = try c.decodeIfPresent(String.self, forKey: .artist) ?? ""
+        album = try c.decodeIfPresent(String.self, forKey: .album) ?? ""
+        author = try c.decodeIfPresent(String.self, forKey: .author) ?? ""
+        bookTitle = try c.decodeIfPresent(String.self, forKey: .bookTitle) ?? ""
+        chapterNumber = try c.decodeIfPresent(String.self, forKey: .chapterNumber) ?? ""
+        chapterTitle = try c.decodeIfPresent(String.self, forKey: .chapterTitle) ?? ""
+        series = try c.decodeIfPresent(String.self, forKey: .series) ?? ""
+        season = try c.decodeIfPresent(String.self, forKey: .season) ?? ""
+        episode = try c.decodeIfPresent(String.self, forKey: .episode) ?? ""
+        episodeTitle = try c.decodeIfPresent(String.self, forKey: .episodeTitle) ?? ""
+        date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        revision = try c.decodeIfPresent(String.self, forKey: .revision) ?? ""
+        narrator = try c.decodeIfPresent(String.self, forKey: .narrator) ?? ""
+        publisher = try c.decodeIfPresent(String.self, forKey: .publisher) ?? ""
+        illustrator = try c.decodeIfPresent(String.self, forKey: .illustrator) ?? ""
+        issueNumber = try c.decodeIfPresent(String.self, forKey: .issueNumber) ?? ""
+        volume = try c.decodeIfPresent(String.self, forKey: .volume) ?? ""
+        seriesNumber = try c.decodeIfPresent(String.self, forKey: .seriesNumber) ?? ""
+        trackNumber = try c.decodeIfPresent(String.self, forKey: .trackNumber) ?? ""
+        recordingType = try c.decodeIfPresent(String.self, forKey: .recordingType) ?? ""
+        type = try c.decodeIfPresent(String.self, forKey: .type) ?? ""
+        system = try c.decodeIfPresent(String.self, forKey: .system) ?? ""
+        genre = try c.decodeIfPresent(String.self, forKey: .genre) ?? ""
+        game = try c.decodeIfPresent(String.self, forKey: .game) ?? ""
+        product = try c.decodeIfPresent(String.self, forKey: .product) ?? ""
+        version = try c.decodeIfPresent(String.self, forKey: .version) ?? ""
+        platform = try c.decodeIfPresent(String.self, forKey: .platform) ?? ""
+        architecture = try c.decodeIfPresent(String.self, forKey: .architecture) ?? ""
+        dateTaken = try c.decodeIfPresent(String.self, forKey: .dateTaken) ?? ""
+        event = try c.decodeIfPresent(String.self, forKey: .event) ?? ""
+        region = try c.decodeIfPresent(String.self, forKey: .region) ?? ""
+        edition = try c.decodeIfPresent(String.self, forKey: .edition) ?? ""
+        custom = try c.decodeIfPresent([String: String].self, forKey: .custom)
+    }
 }
 public struct Item: Identifiable {
     public var id: String { url.path }
@@ -65,6 +146,13 @@ public struct Item: Identifiable {
     public var fields: Fields
     public var evidence: String
     public var reviewed: Bool
+    public var overrideBasename: String?
+    public var alternatives: [Interpretation] = []
+    public var confidence = "Needs review"
+    public var initialFields: Fields?
+    public var initialBasename: String?
+    public var rememberCorrection = false
+    public var rulesTriggered: [String] = []
     public init(url: URL, size: Int64, fields: Fields, evidence: String, reviewed: Bool) { self.url = url; self.size = size; self.fields = fields; self.evidence = evidence; self.reviewed = reviewed }
 }
 public func component(_ value: String) throws {

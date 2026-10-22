@@ -4,15 +4,18 @@ cd "${0:A:h}/.."
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
 mkdir -p "$CLANG_MODULE_CACHE_PATH" .build/cache
+python3 scripts/generate-terms.py
 swift build -c release --cache-path "$PWD/.build/cache" --disable-sandbox
 .build/release/SafetyChecks
-destinationApp="$PWD/../Shelf Elf Librarian.app"
+destinationApp="$PWD/outputs/Shelf Elf Librarian.app"
+mkdir -p "$PWD/outputs"
 # Always assemble a fresh bundle; do not retain resources from earlier branding.
 bundleStage=$(mktemp -d "$PWD/.build/bundle.XXXXXX")
 app="$bundleStage/Shelf Elf Librarian.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp .build/release/LibraryFiler "$app/Contents/MacOS/LibraryFiler"
 cp Info.plist "$app/Contents/Info.plist"
+cp LICENSE USAGE-NOTICE.md Legal/CORE-TERMS.txt Legal/SHELF-ELF-NOTES.txt "$app/Contents/Resources/"
 # Build a standard macOS icon family from the supplied original artwork.
 iconset="$PWD/.build/AppIcon.iconset"
 mkdir -p "$iconset"

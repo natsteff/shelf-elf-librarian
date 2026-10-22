@@ -16,7 +16,7 @@ public final class Journal {
     private var db: OpaquePointer?
     public init(url: URL) throws {
         guard sqlOpen(url.path, &db) == 0 else { throw fail("Cannot open journal.") }
-        try exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, json TEXT NOT NULL);")
+        try exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS folder_events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL);")
     }
     deinit { _ = sqlClose(db) }
     private func quoted(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "''") + "'" }
@@ -25,6 +25,18 @@ public final class Journal {
     public func record(_ op: UUID, row: PlanRow, state: String, detail: String = "", temporary: String? = nil, identity: Fingerprint? = nil) throws {
         let e = Event(operation: op, row: row, state: state, detail: detail, temporary: temporary, resultIdentity: identity)
         let data = try JSONEncoder().encode(e); try exec("INSERT INTO events(json) VALUES (\(quoted(String(decoding: data, as: UTF8.self))));")
+    }
+    public func recordFolder(_ event: FolderEvent) throws {
+        let data = try JSONEncoder().encode(event)
+        try exec("INSERT INTO folder_events(json) VALUES (\(quoted(String(decoding: data, as: UTF8.self))));")
+    }
+    public func folderEvents() throws -> [FolderEvent] {
+        var stmt: OpaquePointer?
+        guard sqlPrepare(db, "SELECT json FROM folder_events ORDER BY seq DESC", -1, &stmt, nil) == 0 else { throw fail("Folder journal read failed.") }
+        defer { _ = sqlFinalize(stmt) }
+        var result: [FolderEvent] = []
+        while sqlStep(stmt) == 100 { if let text = sqlText(stmt, 0) { result.append(try JSONDecoder().decode(FolderEvent.self, from: Data(String(cString: text).utf8))) } }
+        return result
     }
     public func events() throws -> [Event] {
         var stmt: OpaquePointer?; guard sqlPrepare(db, "SELECT json FROM events ORDER BY seq DESC", -1, &stmt, nil) == 0 else { throw fail("Journal read failed.") }; defer { _ = sqlFinalize(stmt) }
@@ -39,7 +51,7 @@ public final class Cancellation: @unchecked Sendable {
     public func cancel() { lock.lock(); value = true; lock.unlock() }
     public var cancelled: Bool { lock.lock(); defer { lock.unlock() }; return value }
 }
-public enum Fault: String { case none, afterCopy, verification, afterPublish, beforeDelete }
+public enum Fault: String { case none, afterCopy, verification, afterPublish, beforeDelete, afterCaseStage }
 public struct ExecutionResult { public var completed = 0; public var failed = 0; public var details: [String] = [] }
 public final class Executor {
     public let journal: Journal
@@ -63,7 +75,7 @@ public final class Executor {
         let source = try sourceFD(sourceURL); defer { close(source) }
         guard try Fingerprint(fd: source) == row.fingerprint, try digest(fd: source) == row.hash else { throw fail("Source changed since preview; preview again.") }
         let root = try Directory(plan.mode == .clean ? srcParent.path : plan.profile.root)
-        guard root.device == plan.rootDevice, root.inode == plan.rootInode else { throw fail("Destination root/volume changed since preview.") }
+        guard plan.mode == .clean || (root.device == plan.rootDevice && root.inode == plan.rootInode) else { throw fail("Destination root/volume changed since preview.") }
         for (path, identity) in row.existingDirectories { let d = try Directory(path); guard d.device == identity.device, d.inode == identity.inode else { throw fail("Destination directory changed since preview.") } }
         try journal.record(plan.id, row: row, state: "Prepared")
         // Open each new directory relative to a verified parent. Never follow links.
@@ -79,19 +91,16 @@ public final class Executor {
             }
         }
         let target = try Directory(destURL.deletingLastPathComponent().path)
-        try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent)
+        try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent, excluding: row.caseOnly == true ? sourceURL.lastPathComponent : nil)
         guard try Fingerprint(fd: source) == row.fingerprint else { throw fail("Source changed before execution.") }
         if plan.mode != .copy && srcParent.device == target.device && !forceCopyMove {
-            try journal.record(plan.id, row: row, state: "Moving", detail: "Exclusive same-volume rename")
-            guard renameatx_np(srcParent.fd, sourceURL.lastPathComponent, target.fd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw fail("Exclusive rename failed: \(String(cString: strerror(errno)))") }
-            let moved = openat(target.fd, destURL.lastPathComponent, O_RDONLY | O_NOFOLLOW)
-            guard moved >= 0 else { throw fail("Moved path unavailable; inspect destination: \(row.destination)") }; defer { close(moved) }
-            let movedID = try Fingerprint(fd: moved), heldID = try Fingerprint(fd: source)
-            guard movedID == heldID, try digest(fd: moved) == row.hash else {
-                let restored = renameatx_np(target.fd, destURL.lastPathComponent, srcParent.fd, sourceURL.lastPathComponent, UInt32(RENAME_EXCL)) == 0
-                throw fail("Source changed during rename. No deletion. \(restored ? "Restored source." : "Recovery destination: " + row.destination)")
-            }
-            _ = fsync(srcParent.fd); _ = fsync(target.fd)
+            try exclusivePathRename(source: sourceURL, destination: destURL, faultAfterStage: fault == .afterCaseStage, verify: { url in
+                let check = try sourceFD(url); defer { close(check) }
+                let actual = try Fingerprint(fd: check), held = try Fingerprint(fd: source)
+                guard actual == held, try digest(fd: check) == row.hash else { throw fail("Source identity/content changed during rename.") }
+            }, record: { state, temporary in
+                try self.journal.record(plan.id, row: row, state: state, temporary: temporary, identity: try Fingerprint(fd: source))
+            })
             let identity = try Fingerprint(fd: source)
             try journal.record(plan.id, row: row, state: "Moved", identity: identity)
             return
@@ -138,6 +147,23 @@ public final class Executor {
             try journal.record(plan.id, row: row, state: "Moved", identity: try Fingerprint(fd: temp))
         }
     }
+    public func recoverCaseStage(_ event: Event) throws {
+        guard event.state == "Case rename staged", let path = event.temporary,
+            URL(fileURLWithPath: path).lastPathComponent.hasPrefix(".shelf-elf-case-"), let expected = event.resultIdentity else { throw fail("This event is not a staged file rename.") }
+        let staged = URL(fileURLWithPath: path), original = URL(fileURLWithPath: event.row.source)
+        guard staged.deletingLastPathComponent().path == original.deletingLastPathComponent().path else { throw fail("Recovery path is outside the original parent.") }
+        let parent = try Directory(original.deletingLastPathComponent().path)
+        guard parent.device == event.row.sourceParentDevice, parent.inode == event.row.sourceParentInode else { throw fail("Recovery parent changed.") }
+        let fd = try sourceFD(staged); defer { close(fd) }
+        guard try Fingerprint(fd: fd) == expected, try digest(fd: fd) == event.row.hash else { throw fail("Staged file changed; recovery refused.") }
+        try exclusivePathRename(source: staged, destination: original, verify: { url in
+            let check = try sourceFD(url); defer { close(check) }
+            guard try Fingerprint(fd: check) == Fingerprint(fd: fd), try digest(fd: check) == event.row.hash else { throw fail("Recovery identity/content changed.") }
+        }, record: { state, temporary in
+            try self.journal.record(event.operation, row: event.row, state: "Recovery: " + state, temporary: temporary, identity: try Fingerprint(fd: fd))
+        })
+        try journal.record(event.operation, row: event.row, state: "Recovered original location", identity: try Fingerprint(fd: fd))
+    }
     public func undo(_ event: Event, allowDeleteCopy: Bool) throws {
         guard ["Copied", "Moved"].contains(event.state), event.resultIdentity != nil else { throw fail("This event cannot be automatically undone.") }
         let row = event.row; let dest = URL(fileURLWithPath: row.destination); let parent = try Directory(dest.deletingLastPathComponent().path)
@@ -164,10 +190,12 @@ public final class Executor {
             let src = URL(fileURLWithPath: row.source), original = try Directory(src.deletingLastPathComponent().path)
             guard original.device == parent.device else { throw fail("Cross-volume move undo requires a new reviewed operation. No files changed.") }
             guard original.device == row.sourceParentDevice, original.inode == row.sourceParentInode else { throw fail("Original directory changed; undo refused.") }
-            try checkCollision(src.deletingLastPathComponent(), name: src.lastPathComponent)
-            try journal.record(event.operation, row: row, state: "Undo moving")
-            guard renameatx_np(parent.fd, dest.lastPathComponent, original.fd, src.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw fail("Undo exclusive move failed.") }
-            _ = fsync(original.fd)
+            try exclusivePathRename(source: dest, destination: src, verify: { url in
+                let check = try sourceFD(url); defer { close(check) }
+                guard try Fingerprint(fd: check) == Fingerprint(fd: fd), try digest(fd: check) == row.hash else { throw fail("Undo identity/content changed; refusing.") }
+            }, record: { state, temporary in
+                try self.journal.record(event.operation, row: row, state: "Undo: " + state, temporary: temporary, identity: try Fingerprint(fd: fd))
+            })
         }
         _ = fsync(parent.fd)
         try journal.record(event.operation, row: row, state: "Undone")
