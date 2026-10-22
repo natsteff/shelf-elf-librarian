@@ -166,7 +166,8 @@ public enum RuleEngine {
 }
 public func proposedBasename(_ item: Item, profile: Profile) throws -> String {
     if let override = item.overrideBasename { try component(override); return override }
-    return try Names.render(PatternEngine.filenameMask(for: item.fields, profile: profile), fields: item.fields, profile: profile, source: item.url, folder: false)
+    let route = try MediaRouting.context(fields: item.fields, source: item.url, profile: profile)
+    return try Names.render(route.filenameMask, fields: route.fields, profile: profile, source: item.url, folder: false)
 }
 public func proposedFilename(_ item: Item, profile: Profile) throws -> String {
     let stem = try proposedBasename(item, profile: profile)

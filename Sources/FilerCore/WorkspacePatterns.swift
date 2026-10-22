@@ -31,7 +31,7 @@ public enum FieldCatalog {
         return trimmed.range(of: #"^\d+[pPiI]$"#, options: .regularExpression) != nil ? trimmed.lowercased() : trimmed
     }
     public static let keys: [String: WritableKeyPath<Fields, String>] = [
-        "Resolution": \.resolution, "Title": \.title, "Year": \.year, "Artist": \.artist, "Album": \.album,
+        "MediaCategory": \.mediaCategory, "Resolution": \.resolution, "Title": \.title, "Year": \.year, "Artist": \.artist, "Album": \.album,
         "Author": \.author, "BookTitle": \.bookTitle, "ChapterNumber": \.chapterNumber, "ChapterTitle": \.chapterTitle,
         "Series": \.series, "Season": \.season, "Episode": \.episode, "EpisodeTitle": \.episodeTitle,
         "Date": \.date, "Revision": \.revision, "Narrator": \.narrator, "Publisher": \.publisher,
@@ -190,7 +190,7 @@ public enum PatternEngine {
                 if capture.key == "EpisodeID", let ep = Names.episodeComponents("Show - " + raw + " - Title", profile: p) {
                     f.season = ep.season; f.episode = ep.episode
                 } else {
-                    let literalFields = ["Resolution", "Type", "System", "Genre", "Year", "Season", "Episode", "SeriesNumber", "Version", "Architecture", "Platform", "DateTaken", "Region", "Edition"]
+                    let literalFields = ["MediaCategory", "Resolution", "Type", "System", "Genre", "Year", "Season", "Episode", "SeriesNumber", "Version", "Architecture", "Platform", "DateTaken", "Region", "Edition"]
                     let preferred = ProtectedSpellings(raw.trimmingCharacters(in: .whitespaces), exceptions: p.exceptions)
                     FieldCatalog.set(capture.key, literalFields.contains(capture.key) ? preferred.restore(preferred.text) : Names.cleanField(raw, p, record: record), &f)
                 }

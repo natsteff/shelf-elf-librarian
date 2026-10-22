@@ -791,6 +791,7 @@ struct FieldEditor: View {
             }
             Text("Edits update proposed names. Rename Selected or the row checkmark applies them in the current folders.").font(.caption).foregroundStyle(.secondary)
             ClassificationField().environmentObject(m)
+            MediaCategoryField().environmentObject(m)
             if let item = m.visibleSelected.first {
                 DisclosureGroup("Interpretation & evidence") { Text(item.evidence).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled) }.font(.system(size: 12))
                 if !item.alternatives.isEmpty {

@@ -31,6 +31,9 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var workspacePatterns: [WorkspacePattern]?
     public var classifications: [FilingType]?
     public var classificationComponent: String?
+    public var mediaRoutingEnabled: Bool?
+    public var mediaCategories: [MediaCategory]?
+    public var defaultMediaCategoryID: UUID?
     public var bookSubtype: BookSubtype?
     public var effectiveBookSubtype: BookSubtype { bookSubtype ?? .audiobook }
     public var root = ""
@@ -87,6 +90,7 @@ public struct Profile: Codable, Identifiable, Equatable {
         guard !(replaceDots && rules.dotsToDashes) else { throw fail("Choose one period handling option: separator periods to spaces, or all periods to spaced hyphens.") }
         try rules.validate()
         try PatternEngine.validate(self)
+        try MediaRouting.validate(self)
         guard !folderMask.hasPrefix("/") else { throw fail("Folder masks must be relative, not absolute paths.") }
         if !fixedCategory.isEmpty { try component(fixedCategory) }
         if !individualTracks.isEmpty { try component(individualTracks) }
@@ -99,9 +103,10 @@ public struct Fields: Codable, Equatable {
     public var narrator = "", publisher = "", illustrator = "", issueNumber = "", volume = "", seriesNumber = "", trackNumber = "", recordingType = ""
     public var type = "", system = "", genre = "", game = "", product = "", version = "", platform = "", architecture = "", dateTaken = "", event = "", region = "", edition = ""
     public var resolution = ""
+    public var mediaCategory = ""
     public var custom: [String: String]?
     public init() {}
-    enum CodingKeys: String, CodingKey { case title, year, artist, album, author, bookTitle, chapterNumber, chapterTitle, series, season, episode, episodeTitle, date, revision, narrator, publisher, illustrator, issueNumber, volume, seriesNumber, trackNumber, recordingType, type, system, genre, game, product, version, platform, architecture, dateTaken, event, region, edition, resolution, custom }
+    enum CodingKeys: String, CodingKey { case title, year, artist, album, author, bookTitle, chapterNumber, chapterTitle, series, season, episode, episodeTitle, date, revision, narrator, publisher, illustrator, issueNumber, volume, seriesNumber, trackNumber, recordingType, type, system, genre, game, product, version, platform, architecture, dateTaken, event, region, edition, resolution, mediaCategory, custom }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
@@ -138,8 +143,10 @@ public struct Fields: Codable, Equatable {
         event = try c.decodeIfPresent(String.self, forKey: .event) ?? ""
         region = try c.decodeIfPresent(String.self, forKey: .region) ?? ""
         edition = try c.decodeIfPresent(String.self, forKey: .edition) ?? ""
+        mediaCategory = try c.decodeIfPresent(String.self, forKey: .mediaCategory) ?? ""
         resolution = FieldCatalog.normalizedResolution(try c.decodeIfPresent(String.self, forKey: .resolution) ?? "")
         custom = try c.decodeIfPresent([String: String].self, forKey: .custom)
+        if mediaCategory.isEmpty, let captured = custom?["MediaCategory"] { mediaCategory = captured }
         if resolution.isEmpty, let captured = custom?["Resolution"] { resolution = FieldCatalog.normalizedResolution(captured) }
     }
 }

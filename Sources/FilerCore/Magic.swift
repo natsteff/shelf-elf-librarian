@@ -128,6 +128,7 @@ public enum Magic {
                 item.confidence = first.confidence
                 item.reviewed = false
             }
+            if MediaRouting.enabled(profile) { item.evidence += "\n" + MediaRouting.resolve(fields: item.fields, source: item.url, profile: profile).1 }
             return item
         }
         if cancel.cancelled { throw fail("Magic analysis cancelled; existing proposals unchanged.") }

@@ -712,6 +712,107 @@ final class FilerCoreTests {
         let f = try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Old"}"#.utf8))
         XCTAssertEqual(f.type, ""); XCTAssertEqual(f.system, ""); XCTAssertEqual(f.custom, nil)
     }
+    func testMixedMediaCategoryFiling() throws {
+        var profile = ProfileSetup.configured(.video, name: "Mixed Videos")
+        profile.root = library.path; profile.mediaRoutingEnabled = true
+        let folders = ["Commercials": "Ad Vault", "Documentaries": "Nonfiction", "Home Videos": "Family", "Movies": "Films", "Music Videos": "Concerts", "TV Shows": "Television"]
+        for i in profile.mediaCategories!.indices { profile.mediaCategories![i].rootFolder = folders[profile.mediaCategories![i].name] }
+        try profile.validate()
+        let examples = [("Great Film (2001).mp4", "Films/Great Film (2001)/Great Film (2001).mp4"),
+                        ("Series - s01e02 - Pilot.mp4", "Television/Series/Season 01/Series - s01e02 - Pilot.mp4"),
+                        ("Documentary - Ocean (2002).mp4", "Nonfiction/Ocean (2002)/Ocean (2002).mp4"),
+                        ("Commercial - Camera.mp4", "Ad Vault/Camera.mp4"),
+                        ("Home Video Picnic.mp4", "Family/Home Video Picnic.mp4"),
+                        ("Music Video Concert.mp4", "Concerts/Music Video Concert/Music Video Concert.mp4")]
+        var items: [Item] = []
+        for (name, _) in examples {
+            let url = src.appendingPathComponent(name); try Data(name.utf8).write(to: url)
+            let interpreted = Names.basicInterpret(url, profile)
+            items.append(Item(url: url, size: Int64(name.utf8.count), fields: interpreted.0, evidence: interpreted.1, reviewed: true))
+        }
+        let plan = try makePlan(items: items, profile: profile, mode: .copy, category: "", fileOnly: false)
+        XCTAssertEqual(plan.rows.filter(\.actionable).count, 6)
+        for (i, example) in examples.enumerated() {
+            XCTAssertEqual(plan.rows[i].destination, library.appendingPathComponent(example.1).path)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: plan.rows[i].destination))
+            XCTAssertTrue(plan.rows[i].explanation.contains("Media Category:"))
+        }
+        XCTAssertEqual(try executor().execute(plan).completed, 6)
+        for (i, example) in examples.enumerated() {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: items[i].url.path))
+            XCTAssertEqual(try Data(contentsOf: library.appendingPathComponent(example.1)), Data(example.0.utf8))
+        }
+    }
+    func testMediaCategoryPriorityAndCapture() throws {
+        var profile = ProfileSetup.configured(.video, name: "Videos"); profile.mediaRoutingEnabled = true
+        for i in profile.mediaCategories!.indices { profile.mediaCategories![i].rootFolder = profile.mediaCategories![i].name }
+        var kids = MediaCategory("Children", type: "Movie", folderMask: "{Title}", filenameMask: "{Title}", rules: [.init(type: "Movie", keyword: "kids")])
+        kids.rootFolder = "Kid Movies"; kids.aliases = "Kids, Family Films"
+        profile.mediaCategories!.append(kids) // keyword specificity wins even after generic Movies
+        let url = src.appendingPathComponent("Adventure for Kids (2001).mp4")
+        let fields = Names.basicInterpret(url, profile).0
+        XCTAssertEqual(MediaRouting.resolve(fields: fields, source: url, profile: profile).0?.id, kids.id)
+        XCTAssertEqual(MediaRouting.resolve(fields: fields, source: src.appendingPathComponent("Skids.mp4"), profile: profile).0?.name, "Movies")
+        var tv = fields; tv.type = "TV Show"
+        XCTAssertEqual(MediaRouting.resolve(fields: tv, source: url, profile: profile).0?.name, "TV Shows")
+        var explicit = fields; explicit.mediaCategory = "Documentaries"
+        XCTAssertEqual(MediaRouting.resolve(fields: explicit, source: url, profile: profile).0?.name, "Documentaries")
+        profile.workspacePatterns = [WorkspacePattern("{Title} [{MediaCategory}]")]
+        let capturedURL = src.appendingPathComponent("Story [Family Films].mp4")
+        let captured = Names.basicInterpret(capturedURL, profile).0
+        XCTAssertEqual(captured.mediaCategory, "Family Films")
+        let context = try MediaRouting.context(fields: captured, source: capturedURL, profile: profile, requireDestination: true)
+        XCTAssertEqual(context.fields.mediaCategory, "Children"); XCTAssertEqual(context.rootFolder, "Kid Movies")
+        XCTAssertEqual(context.fields.type, "Movie")
+        XCTAssertEqual(try Names.render("{Title} [{MediaCategory}]", fields: context.fields, profile: profile, source: capturedURL, folder: false), "Story [Children]")
+        profile.defaultMediaCategoryID = kids.id
+        var unknown = Fields(); unknown.title = "Unclassified"
+        XCTAssertEqual(MediaRouting.resolve(fields: unknown, source: url, profile: profile).0?.id, kids.id)
+        unknown.mediaCategory = "Unknown Category"
+        XCTAssertThrowsError(try MediaRouting.context(fields: unknown, source: url, profile: profile, requireDestination: true))
+        unknown.mediaCategory = "Children"
+        profile.mediaCategories![profile.mediaCategories!.count - 1].enabled = false
+        XCTAssertThrowsError(try MediaRouting.context(fields: unknown, source: url, profile: profile, requireDestination: true))
+        XCTAssertThrowsError(try profile.validate()) // disabled default must be resolved
+    }
+    func testMediaCategorySafetyAndArchives() throws {
+        var profile = ProfileSetup.configured(.video, name: "Videos"); profile.root = library.path
+        let originalMask = profile.folderMask
+        let url = src.appendingPathComponent("Example (2001).mp4"); try Data("bytes".utf8).write(to: url)
+        let fields = Names.basicInterpret(url, profile).0
+        let item = Item(url: url, size: 5, fields: fields, evidence: "", reviewed: false)
+        XCTAssertEqual(try MediaRouting.context(fields: fields, source: url, profile: profile).folderMask, PatternEngine.folderMask(for: fields, profile: profile))
+        profile.mediaRoutingEnabled = true
+        let unmapped = try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .copy, keepCurrentNames: true)
+        XCTAssertFalse(unmapped.rows[0].actionable); XCTAssertTrue(unmapped.rows[0].explanation.contains("destination folder for Media Category"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.appendingPathComponent("Movies").path))
+        profile.mediaCategories![3].rootFolder = "../Outside"
+        XCTAssertThrowsError(try profile.validate())
+        XCTAssertThrowsError(try MediaRouting.context(fields: fields, source: url, profile: profile, requireDestination: true))
+        profile.mediaCategories![3].rootFolder = "Shared"
+        profile.mediaCategories![3].folderMask = ""
+        profile.mediaCategories![3].filenameMask = "{Title}"
+        var sibling = MediaCategory("Alternate", type: "Movie", folderMask: "", filenameMask: "{Title}")
+        sibling.rootFolder = "Shared"; profile.mediaCategories!.append(sibling)
+        let secondURL = src.appendingPathComponent("Second.mp4"); try Data("bytes".utf8).write(to: secondURL)
+        var one = item; one.fields.title = "Same"; one.fields.mediaCategory = "Movies"
+        var secondFields = one.fields; secondFields.mediaCategory = "Alternate"
+        let two = Item(url: secondURL, size: 5, fields: secondFields, evidence: "", reviewed: false)
+        let collision = try makeConfirmedFilingPlan(items: [one, two], profile: profile, mode: .copy, keepCurrentNames: false)
+        XCTAssertEqual(collision.rows.filter(\.actionable).count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.appendingPathComponent("Shared").path))
+        let archive = SettingsArchive(profiles: [profile], general: .suggestedDefaults, activeProfileID: profile.id)
+        let restored = try JSONDecoder().decode(SettingsArchive.self, from: JSONEncoder().encode(archive))
+        XCTAssertEqual(try restored.validatedProfiles()[0], profile)
+        var dictionary = try JSONSerialization.jsonObject(with: JSONEncoder().encode(profile)) as! [String: Any]
+        dictionary.removeValue(forKey: "mediaCategories"); dictionary.removeValue(forKey: "mediaRoutingEnabled"); dictionary.removeValue(forKey: "defaultMediaCategoryID")
+        let legacy = try JSONDecoder().decode(Profile.self, from: JSONSerialization.data(withJSONObject: dictionary))
+        XCTAssertFalse(MediaRouting.enabled(legacy)); XCTAssertEqual(legacy.folderMask, originalMask)
+        XCTAssertEqual(try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Old"}"#.utf8)).mediaCategory, "")
+        XCTAssertEqual(try JSONDecoder().decode(Fields.self, from: Data(#"{"custom":{"MediaCategory":"Kids"}}"#.utf8)).mediaCategory, "Kids")
+        var aliasConflict = profile; aliasConflict.mediaCategories![0].aliases = "Movies"
+        XCTAssertThrowsError(try aliasConflict.validate())
+    }
     func testConfirmedFilingPaths() throws {
         var profile = ProfileSetup.configured(.other, name: "Test")
         profile.extensions = "txt"; profile.root = library.path; profile.folderMask = ""; profile.filenameMask = "{Title}"
@@ -971,4 +1072,7 @@ do { try suite.setUpWithError(); try suite.testBookHierarchyAndParentPatterns();
 do { try suite.setUpWithError(); try suite.testProfileMigrationArchiveAndNotes(); try suite.tearDownWithError(); print("Checked profile migration, archives, notes and legacy decoding") } catch { failures += 1; print("FAIL testProfileMigrationArchiveAndNotes: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testPatternProtectionAndExplicitFiling(); try suite.tearDownWithError(); print("Checked protected spellings and explicit classified copy") } catch { failures += 1; print("FAIL testPatternProtectionAndExplicitFiling: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testConfirmedFilingPaths(); try suite.tearDownWithError(); print("Checked explicit filing bypass, original names, proposed names and destination guards") } catch { failures += 1; print("FAIL testConfirmedFilingPaths: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 52 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testMixedMediaCategoryFiling(); try suite.tearDownWithError(); print("Checked mixed-category filing to mapped folders") } catch { failures += 1; print("FAIL testMixedMediaCategoryFiling: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testMediaCategoryPriorityAndCapture(); try suite.tearDownWithError(); print("Checked category priorities, aliases, captures, defaults and disabled references") } catch { failures += 1; print("FAIL testMediaCategoryPriorityAndCapture: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testMediaCategorySafetyAndArchives(); try suite.tearDownWithError(); print("Checked category guards, collisions, archives and legacy settings") } catch { failures += 1; print("FAIL testMediaCategorySafetyAndArchives: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 55 fixture scenarios"); exit(failures == 0 ? 0 : 1)

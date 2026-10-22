@@ -5,8 +5,7 @@ import FilerCore
 /// One settings flow for every content type; examples and specialized controls follow the profile.
 struct ProfileSettingsContent: View {
     @EnvironmentObject var model: Model
-    @State private var notesHeight: CGFloat = 150
-    @State private var notesDragStart: CGFloat?
+    @State private var notesHeight: CGFloat = 100
     @Binding var profile: Profile
     @Binding var validation: String
     var patterns: () -> Void
@@ -58,9 +57,35 @@ struct ProfileSettingsContent: View {
             profile.classifications = types
         })
     }
+    private func typeOverride(_ type: String, folder: Bool) -> Binding<Bool> {
+        Binding(get: {
+            guard let entry = profile.classifications?.first(where: { $0.name == type }) else { return false }
+            return folder ? entry.folderMask != nil : entry.filenameMask != nil
+        }, set: { enabled in
+            var list = profile.classifications ?? []
+            if !list.contains(where: { $0.name == type }) { list.append(FilingType(type)) }
+            if let i = list.firstIndex(where: { $0.name == type }) {
+                let suggested = PatternEngine.defaultTypes(for: .video).first { $0.name == type }
+                if folder { list[i].folderMask = enabled ? (suggested?.folderMask ?? profile.folderMask) : nil }
+                else { list[i].filenameMask = enabled ? (suggested?.filenameMask ?? profile.filenameMask) : nil }
+            }
+            profile.classifications = list
+        })
+    }
+    @ViewBuilder private func videoTypeLayout(_ type: String) -> some View {
+        Text(type + " Type layout").font(.headline)
+        Toggle("Custom “" + type + "” folder mask", isOn: typeOverride(type, folder: true))
+        if typeOverride(type, folder: true).wrappedValue {
+            SettingsInput(title: type + " folder mask", text: typeMask(type, folder: true), example: type == "Movie" ? "Movies/{Title} ({Year?})" : "TV Shows/{Series}/Season {Season:02}")
+        } else { Text("Inherits fallback folder mask: " + profile.folderMask).font(.caption).foregroundStyle(.secondary) }
+        Toggle("Custom “" + type + "” filename mask", isOn: typeOverride(type, folder: false))
+        if typeOverride(type, folder: false).wrappedValue {
+            SettingsInput(title: type + " filename mask", text: typeMask(type, folder: false), example: type == "Movie" ? "{Title} ({Year?}) [{Resolution?}]" : "{Series} - {EpisodeID} - {EpisodeTitle}")
+        } else { Text("Inherits fallback filename mask: " + profile.filenameMask).font(.caption).foregroundStyle(.secondary) }
+    }
     private var componentReference: String {
         switch profile.kind {
-        case .video: return "Title, Year, Resolution, Series, Season, Episode, EpisodeID, EpisodeTitle, Type"
+        case .video: return "Title, Year, Resolution, MediaCategory, Series, Season, Episode, EpisodeID, EpisodeTitle, Type"
         case .music: return "Artist, Title, Album, Year, TrackNumber, Genre, RecordingType, Live, Bucket, AlbumOrIndividual"
         case .audiobook:
             switch profile.effectiveBookSubtype {
@@ -81,27 +106,8 @@ struct ProfileSettingsContent: View {
             SettingsInput(title: "Profile name", text: $profile.name, example: profile.kind.label + " Library")
             VStack(alignment: .leading) {
                 Text("Description / Notes").font(.caption.bold())
-                TextEditor(text: Binding(get: { profile.notes ?? "" }, set: { profile.notes = $0 }))
-                    .font(.system(size: NSFont.systemFontSize)).frame(height: notesHeight)
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.3)))
-                HStack(spacing: 5) {
-                    Spacer()
-                    Text("Drag to resize").font(.caption).foregroundStyle(.secondary)
-                    Image(systemName: "arrow.up.and.down").font(.caption).foregroundStyle(.secondary)
-                }.frame(height: 16).contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                        if notesDragStart == nil { notesDragStart = notesHeight }
-                        notesHeight = min(500, max(98, (notesDragStart ?? 150) + value.translation.height))
-                    }.onEnded { _ in notesDragStart = nil })
-                    .accessibilityElement(children: .ignore).accessibilityLabel("Resize description and notes")
-                    .accessibilityValue("\(Int(notesHeight)) points high")
-                    .accessibilityAdjustableAction { direction in
-                        switch direction {
-                        case .increment: notesHeight = min(500, notesHeight + 30)
-                        case .decrement: notesHeight = max(98, notesHeight - 30)
-                        @unknown default: break
-                        }
-                    }
+                ContentSizedNotesEditor(text: Binding(get: { profile.notes ?? "" }, set: { profile.notes = $0 }), height: $notesHeight)
+                    .frame(height: notesHeight).overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.3)))
             }
             Picker("Content type", selection: $profile.kind) { ForEach(Kind.allCases) { Text($0.label).tag($0) } }
             if profile.kind == .audiobook {
@@ -181,12 +187,13 @@ struct ProfileSettingsContent: View {
         }
         Section("4. Build names & folders") {
             if profile.kind == .video {
-                Text("Movie").font(.headline)
-                SettingsInput(title: "Movie folder mask", text: typeMask("Movie", folder: true), example: "Movies/{Title} ({Year?})")
-                SettingsInput(title: "Movie filename mask", text: typeMask("Movie", folder: false), example: "{Title} ({Year?}) [{Resolution?}]")
-                Text("TV Show").font(.headline)
-                SettingsInput(title: "TV folder mask", text: typeMask("TV Show", folder: true), example: "TV Shows/{Series}/Season {Season:02}")
-                SettingsInput(title: "TV filename mask", text: typeMask("TV Show", folder: false), example: "{Series} - {EpisodeID} - {EpisodeTitle}")
+                DisclosureGroup("Media Categories — map videos to your library folders") {
+                    MediaCategorySettings(profile: $profile, validation: $validation)
+                        .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
+                }
+                SettingsHint(text: "Optional Media Categories choose the destination branch. Layouts below remain the Type/fallback defaults; category-specific layouts can override them. Existing routing is preserved until you enable Media Categories.")
+                videoTypeLayout("Movie")
+                videoTypeLayout("TV Show")
                 EpisodeFormattingSettings(rules: Binding(get: { profile.rules }, set: { profile.rules = $0 }))
                 SettingsHint(text: "These are the same Movie and TV Show mappings shown in Filing Types. Other types can override the fallback masks below.")
                 DisclosureGroup("Fallback masks for other video types") { fallbackMasks }

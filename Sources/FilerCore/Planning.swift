@@ -243,6 +243,7 @@ public func scan(_ root: URL, profile: Profile, recursive: Bool, cancel: Cancell
             var triggered: [String] = []
             let (f, evidence, reviewed) = Names.basicInterpret(url, profile) { label in if !triggered.contains(label) { triggered.append(label) } }
             var item = Item(url: url, size: Int64(v.fileSize ?? 0), fields: f, evidence: evidence, reviewed: reviewed)
+            if MediaRouting.enabled(profile) { item.evidence += "\n" + MediaRouting.resolve(fields: f, source: url, profile: profile).1 }
             item.rulesTriggered = triggered
             item.initialFields = f; item.initialBasename = try? proposedBasename(item, profile: profile)
             items.append(item)
@@ -315,8 +316,11 @@ public func makePlan(items: [Item], profile p: Profile, mode: Mode, category: St
             var dest = mode == .clean ? item.url.deletingLastPathComponent() : URL(fileURLWithPath: p.root)
             if mode != .clean {
                 if !category.isEmpty { dest.appendPathComponent(category) }
-                try PatternEngine.validateClassification(item.fields, profile: p)
-                let folder = try Names.render(PatternEngine.folderMask(for: item.fields, profile: p), fields: item.fields, profile: p, source: item.url, folder: true)
+                let route = try MediaRouting.context(fields: item.fields, source: item.url, profile: p, requireDestination: true)
+                try PatternEngine.validateClassification(route.fields, profile: p)
+                if !route.rootFolder.isEmpty { dest.appendPathComponent(route.rootFolder) }
+                if MediaRouting.enabled(p) && !row.explanation.contains(route.explanation) { row.explanation += "\n" + route.explanation }
+                let folder = try Names.render(route.folderMask, fields: route.fields, profile: p, source: item.url, folder: true)
                 for part in folder.split(separator: "/") { dest.appendPathComponent(String(part)) }
             }
             row.destination = dest.appendingPathComponent(name).path

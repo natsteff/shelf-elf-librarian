@@ -13,7 +13,7 @@ public enum ProfileSetup {
         profile.name = name; profile.schemaVersion = 2; profile.rootAllowed = true
         profile.classifications = PatternEngine.defaultTypes(for: kind)
         profile.workspacePatterns = PatternEngine.defaults(for: profile)
-        if kind == .video { profile.folderMask = "{Title} ({Year?})"; profile.filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
+        if kind == .video { profile.mediaRoutingEnabled = false; profile.mediaCategories = MediaRouting.starters; profile.folderMask = "{Title} ({Year?})"; profile.filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
         var rules = profile.rules
         if [.video, .music, .audiobook].contains(kind) { rules.smartTitleCase = true }
         if kind == .video { rules.hyphensToSpaces = true; rules.formatEpisodes = true; profile.removeTokens = "" }
