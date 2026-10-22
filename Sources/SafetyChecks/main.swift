@@ -552,6 +552,19 @@ final class FilerCoreTests {
         XCTAssertEqual(try proposedFilename(Item(url: tvURL, size: 0, fields: f, evidence: "", reviewed: false), profile: video), "Ad - Sale.mp4")
     }
     func testPatternLiteralsValidationAndCustomFields() throws {
+        var video = ProfileSetup.configured(.video, name: "Video")
+        video.workspacePatterns = [WorkspacePattern("{Title} {Year} {Resolution}", type: "Movie")]
+        video.filenameMask = "{TitleYear} [{Resolution?}]"
+        let movieURL = src.appendingPathComponent("Kong of Hell 2005 720P.mp4")
+        var movieFields = Names.basicInterpret(movieURL, video).0
+        XCTAssertEqual(movieFields.resolution, "720p")
+        XCTAssertEqual(try Names.render(video.filenameMask, fields: movieFields, profile: video, source: movieURL, folder: false), "Kong Of Hell (2005) [720p]")
+        movieFields.resolution = ""
+        XCTAssertEqual(try Names.render(video.filenameMask, fields: movieFields, profile: video, source: movieURL, folder: false), "Kong Of Hell (2005)")
+        let oldFields = try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Movie","custom":{"Resolution":"1080P"}}"#.utf8))
+        XCTAssertEqual(oldFields.resolution, "1080p")
+        XCTAssertEqual(try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Movie"}"#.utf8)).resolution, "")
+        XCTAssertEqual(try JSONDecoder().decode(Fields.self, from: JSONEncoder().encode(oldFields)).resolution, "1080p")
         var p = ProfileSetup.configured(.other, name: "Custom")
         p.workspacePatterns = [WorkspacePattern("Item - {Collection} [{Title}]")]
         let url = src.appendingPathComponent("Item - Archive [Original].PDF")

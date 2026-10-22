@@ -20,7 +20,7 @@ struct WorkspaceProfilePicker: View {
     var body: some View {
         HStack(spacing: 8) {
             if m.active.rules.useMagic {
-                Image(systemName: "wand.and.stars").foregroundStyle(.secondary)
+                Label("Magic enabled", systemImage: "wand.and.stars").fixedSize().foregroundStyle(.secondary)
                     .accessibilityLabel("Magic enabled")
                     .instantHelp("Magic is enabled for this profile. Run Magic starts manual analysis of selected visible files.")
             }
@@ -39,6 +39,7 @@ struct WorkspaceLocationBar: View {
             Button("Open Workspace…", systemImage: "folder.badge.plus") { m.openWorkspace() }
             Button { m.refresh() } label: { Image(systemName: "arrow.clockwise") }
                 .disabled(m.workspace == nil).accessibilityLabel("Refresh workspace").instantHelp("Reload files and ordinary cleanup proposals. Does not run Magic.")
+            Toggle("Include subfolders", isOn: $m.recursive).onChange(of: m.recursive) { m.refresh() }
             Divider().frame(height: 18)
             HStack(spacing: 5) {
                 Text("Workspace:").foregroundStyle(.secondary)
@@ -54,7 +55,6 @@ struct WorkspaceLocationBar: View {
                 } else { Text("None open").foregroundStyle(.secondary) }
             }.font(.callout)
             Spacer(minLength: 8)
-            Toggle("Include subfolders", isOn: $m.recursive).onChange(of: m.recursive) { m.refresh() }
         }.controlSize(.small).padding(.horizontal, 14).padding(.vertical, 9)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
     }

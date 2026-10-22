@@ -26,8 +26,12 @@ public struct FilingType: Codable, Equatable, Identifiable {
     }
 }
 public enum FieldCatalog {
+    public static func normalizedResolution(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.range(of: #"^\d+[pPiI]$"#, options: .regularExpression) != nil ? trimmed.lowercased() : trimmed
+    }
     public static let keys: [String: WritableKeyPath<Fields, String>] = [
-        "Title": \.title, "Year": \.year, "Artist": \.artist, "Album": \.album,
+        "Resolution": \.resolution, "Title": \.title, "Year": \.year, "Artist": \.artist, "Album": \.album,
         "Author": \.author, "BookTitle": \.bookTitle, "ChapterNumber": \.chapterNumber, "ChapterTitle": \.chapterTitle,
         "Series": \.series, "Season": \.season, "Episode": \.episode, "EpisodeTitle": \.episodeTitle,
         "Date": \.date, "Revision": \.revision, "Narrator": \.narrator, "Publisher": \.publisher,
@@ -38,7 +42,7 @@ public enum FieldCatalog {
     ]
     public static func values(_ f: Fields) -> [String: String] { keys.mapValues { f[keyPath: $0] }.merging(f.custom ?? [:]) { known, _ in known } }
     public static func get(_ key: String, _ f: Fields) -> String { keys[key].map { f[keyPath: $0] } ?? f.custom?[key] ?? "" }
-    public static func set(_ key: String, _ value: String, _ f: inout Fields) { if let path = keys[key] { f[keyPath: path] = value } else { var custom = f.custom ?? [:]; custom[key] = value; f.custom = custom } }
+    public static func set(_ key: String, _ value: String, _ f: inout Fields) { if let path = keys[key] { f[keyPath: path] = key == "Resolution" ? normalizedResolution(value) : value } else { var custom = f.custom ?? [:]; custom[key] = value; f.custom = custom } }
 }
 public enum PatternEngine {
     public static func classificationKey(_ p: Profile) -> String { p.classificationComponent ?? (p.kind == .roms ? "System" : p.kind == .music ? "Genre" : "Type") }
@@ -156,7 +160,7 @@ public enum PatternEngine {
                 if capture.key == "EpisodeID", let ep = Names.episodeComponents("Show - " + raw + " - Title", profile: p) {
                     f.season = ep.season; f.episode = ep.episode
                 } else {
-                    let literalFields = ["Type", "System", "Genre", "Year", "Season", "Episode", "SeriesNumber", "Version", "Architecture", "Platform", "DateTaken", "Region", "Edition"]
+                    let literalFields = ["Resolution", "Type", "System", "Genre", "Year", "Season", "Episode", "SeriesNumber", "Version", "Architecture", "Platform", "DateTaken", "Region", "Edition"]
                     let preferred = ProtectedSpellings(raw.trimmingCharacters(in: .whitespaces), exceptions: p.exceptions)
                     FieldCatalog.set(capture.key, literalFields.contains(capture.key) ? preferred.restore(preferred.text) : Names.cleanField(raw, p, record: record), &f)
                 }

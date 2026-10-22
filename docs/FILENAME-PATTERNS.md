@@ -62,3 +62,9 @@ The compatibility recognizer and reusable token handlers remain code. Explicit r
 The eight content types are Video, Music, Books & Comics, Documents, Video Game ROMs, Photos, Software & Installers, and Other / Custom. FORGE and PDF Library are Documents profiles; book subtypes remain Audiobook/Ebook/Comic/Mixed. Existing profiles keep their content type and custom settings. Changing the picker alone does not reset them; Load defaults is an explicit replacement of the profile's rules.
 
 Metadata such as Genre, DateTaken, Platform and Version comes from patterns or manual entry. MP3 tags, photo EXIF and application internals are not read. Regular installer files and archives are supported; .app bundles are not treated as ordinary files. TV/children/documentary classifications are configurable values, not inferred audience or content judgments.
+
+### Optional video resolution
+
+Use `{Resolution}` in an input pattern, for example `{Title} {Year} {Resolution}`. Numeric labels such as `720P` normalize to `720p`. The video component editor allows manual correction. No video dimensions or source media are inspected.
+
+Output `{TitleYear} [{Resolution?}]` produces `Movie (2005) [720p]`, or `Movie (2005)` when Resolution is blank. `{Resolution}` without `?` requires a value. Existing profile masks are preserved.

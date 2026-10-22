@@ -590,8 +590,7 @@ struct MainView: View {
         .background(MainWindowAppearance())
         .disabled(m.busy || showSplash)
         .toolbar {
-            UnsharedToolbarItem(placement: .navigation) { WorkspaceBrand().disabled(m.busy || showSplash) }
-            UnsharedToolbarItem(placement: .primaryAction) {
+            UnsharedToolbarItem(placement: .confirmationAction) {
                 HStack(spacing: 12) {
                     WorkspaceProfilePicker().environmentObject(m)
                     Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
@@ -600,6 +599,8 @@ struct MainView: View {
                         .labelStyle(.iconOnly).instantHelp("General Settings")
                     Button { m.loadHistory(); m.showHistory = true } label: { Label("History", systemImage: "clock") }
                         .labelStyle(.iconOnly).instantHelp("History & Undo")
+                    Divider().frame(height: 28)
+                    WorkspaceBrand()
                 }.disabled(m.busy || showSplash)
             }
         }
@@ -690,7 +691,7 @@ struct FieldEditor: View {
     func field(_ label: String, _ key: WritableKeyPath<Fields, String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-            TextField(label, text: Binding(get: { value(key) }, set: { v in m.updateFields { $0[keyPath: key] = v } }), prompt: Text(Set(m.visibleSelected.map { $0.fields[keyPath: key] }).count > 1 ? "Mixed values — type to replace" : label))
+            TextField(label, text: Binding(get: { value(key) }, set: { v in m.updateFields { $0[keyPath: key] = key == \Fields.resolution ? FieldCatalog.normalizedResolution(v) : v } }), prompt: Text(Set(m.visibleSelected.map { $0.fields[keyPath: key] }).count > 1 ? "Mixed values — type to replace" : label))
                 .accessibilityLabel(label)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -747,6 +748,7 @@ struct FieldEditor: View {
                     }, set: { value in m.updateFields { FieldCatalog.set(key, value, &$0) } }))
                 }
             }
+            if m.active.kind == .video { field("Resolution (optional)", \.resolution) }
             if m.active.kind == .documents { field("Date", \.date); field("Revision", \.revision) }
             if m.active.kind == .documents && ((m.active.workspacePatterns ?? []).contains { $0.pattern.contains("{Game}") } || m.visibleSelected.contains { !$0.fields.game.isEmpty }) { field("Game", \.game) }
             if m.active.kind == .roms { field("Region", \.region); field("Edition", \.edition); field("Revision", \.revision) }

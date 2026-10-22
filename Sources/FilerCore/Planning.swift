@@ -179,6 +179,7 @@ public enum Names {
         var values = ["Title": title, "Year": f.year, "Artist": f.artist, "Album": f.album, "Author": f.author, "BookTitle": f.bookTitle, "ChapterNumber": f.chapterNumber, "ChapterTitle": f.chapterTitle, "TitleYear": title.isEmpty ? "" : titleYear, "AlbumOrIndividual": f.album.isEmpty ? p.individualTracks : f.album, "Bucket": RuleEngine.bucket(artist: f.artist, profile: p), "ChapterOrBook": f.chapterNumber.isEmpty ? f.bookTitle : clean(source.deletingPathExtension().lastPathComponent, p)]
         values.merge(["Series": f.series, "Season": f.season, "Episode": f.episode, "EpisodeTitle": f.episodeTitle, "Date": f.date, "Revision": f.revision, "EpisodeID": ""]) { _, new in new }
         values.merge(FieldCatalog.values(f)) { old, _ in old }
+        values["Resolution"] = FieldCatalog.normalizedResolution(f.resolution)
         values["BookFolder"] = (f.seriesNumber.isEmpty ? "" : f.seriesNumber + " - ") + (f.bookTitle.isEmpty ? f.title : f.bookTitle)
         values.merge(["Narrator": f.narrator, "Publisher": f.publisher, "Illustrator": f.illustrator, "IssueNumber": f.issueNumber, "Volume": f.volume, "SeriesNumber": f.seriesNumber, "TrackNumber": f.trackNumber, "RecordingType": f.recordingType, "Live": f.recordingType.caseInsensitiveCompare("Live") == .orderedSame ? "(Live)" : ""]) { _, new in new }
         if let number = Int(f.trackNumber), number >= 0 { values["TrackNumber:02"] = String(format: "%02d", number) }
@@ -197,6 +198,11 @@ public enum Names {
                     return values[key]?.isEmpty == true
                 }
             }.joined(separator: "/")
+        }
+        // Optional resolution includes its brackets only when a value is present.
+        if f.resolution.isEmpty {
+            effectiveMask = effectiveMask.replacingOccurrences(of: " [{Resolution?}]", with: "")
+                .replacingOccurrences(of: "[{Resolution?}]", with: "")
         }
         let re = try NSRegularExpression(pattern: "\\{([^}]+)\\}")
         var out = effectiveMask
