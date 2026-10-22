@@ -190,19 +190,23 @@ public enum Names {
         if let n = Int(f.episode), (0...999).contains(n) { values["Episode:02"] = String(format: "%02d", n) }
         if let n = Int(f.chapterNumber) { values["ChapterNumber:02"] = String(format: "%02d", n) }
         var effectiveMask = mask
+        // Parentheses/brackets around an optional component belong to that component.
+        // Remove the group before optional-folder filtering so Title ({Year?}) keeps Title.
+        for (key, value) in values where value.isEmpty {
+            for pair in [("(", ")"), ("[", "]")] {
+                let group = pair.0 + "{" + key + "?}" + pair.1
+                effectiveMask = effectiveMask.replacingOccurrences(of: " " + group, with: "")
+                    .replacingOccurrences(of: group, with: "")
+            }
+        }
         if folder {
-            effectiveMask = try mask.components(separatedBy: "/").filter { segment in
+            effectiveMask = try effectiveMask.components(separatedBy: "/").filter { segment in
                 let optional = try NSRegularExpression(pattern: #"\{([^{}]+)\?\}"#)
                 return !optional.matches(in: segment, range: NSRange(segment.startIndex..., in: segment)).contains { match in
                     let key = (segment as NSString).substring(with: match.range(at: 1))
                     return values[key]?.isEmpty == true
                 }
             }.joined(separator: "/")
-        }
-        // Optional resolution includes its brackets only when a value is present.
-        if f.resolution.isEmpty {
-            effectiveMask = effectiveMask.replacingOccurrences(of: " [{Resolution?}]", with: "")
-                .replacingOccurrences(of: "[{Resolution?}]", with: "")
         }
         let re = try NSRegularExpression(pattern: "\\{([^}]+)\\}")
         var out = effectiveMask

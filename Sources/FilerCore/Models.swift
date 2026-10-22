@@ -84,6 +84,7 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var accepted: Set<String> { Set(extensions.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) }.filter { !$0.isEmpty }) }
     public func validate() throws {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty, !accepted.isEmpty else { throw fail("Profile needs a name and file extensions.") }
+        guard !(replaceDots && rules.dotsToDashes) else { throw fail("Choose one period handling option: separator periods to spaces, or all periods to spaced hyphens.") }
         try rules.validate()
         try PatternEngine.validate(self)
         guard !folderMask.hasPrefix("/") else { throw fail("Folder masks must be relative, not absolute paths.") }

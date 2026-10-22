@@ -2,61 +2,6 @@ import SwiftUI
 import AppKit
 import FilerCore
 
-struct PreparationSettings: View {
-    @Binding var rules: PreparationRules
-    let supportsEpisodes: Bool
-    private func move(_ id: UUID, offset: Int) {
-        guard let index = rules.replacements.firstIndex(where: { $0.id == id }), rules.replacements.indices.contains(index + offset) else { return }
-        var list = rules.replacements; list.swapAt(index, index + offset); rules.replacements = list
-    }
-    var body: some View {
-        Group {
-            Toggle("Hyphens to spaces (filenames)", isOn: $rules.hyphensToSpaces)
-            SettingsHint(text: "Song-Title → Song Title. Hyphens and dash variants become spaces in cleaned filename components; output masks may add their own separators.")
-            Toggle("Periods to ‘ - ’ (basename only)", isOn: $rules.dotsToDashes)
-            SettingsHint(text: "Song.Title.mp3 → Song - Title.mp3. Replaces every basename period, including decimal points; use separator dots to spaces instead to protect decimals and initials.")
-            Text("Periods to dashes takes precedence over separator dots to spaces; the original extension is always kept.").font(.caption).foregroundStyle(.secondary)
-            Toggle("Smart title case (existing folder names)", isOn: Binding(get: { rules.folderTitleCase ?? true }, set: { rules.folderTitleCase = $0 }))
-            Toggle("Hyphens and surrounding spaces to one space (folder names)", isOn: $rules.folderHyphensToSpaces)
-            SettingsHint(text: "Artist - Name → Artist Name. Applies to generated destination folder names. To rename existing folders, use Tools → Clean Folder Names and review the folders explicitly. Existing-folder casing and universal exceptions apply there; contents stay unchanged.")
-            if supportsEpisodes {
-                Toggle("Format season/episode separators", isOn: $rules.formatEpisodes)
-                SettingsHint(text: "Show S1E2 Pilot → Show - S01E02 - Pilot. Adds spaced hyphens and pads numbers; capitalization follows the choice below.")
-                Picker("Season/episode capitalization", selection: Binding(get: { rules.episodeCase }, set: { rules.episodeCapitalization = $0 })) {
-                    ForEach(EpisodeCapitalization.allCases) { Text($0.label).tag($0) }
-                }
-                Toggle("Lowercase the entire episode filename", isOn: $rules.lowercaseEpisodeTitle)
-                SettingsHint(text: "Only recognized S/E indicators are affected. Keep original protects their letter case from title casing and whole-name lowercasing. Whole-name lowercasing changes the surrounding show/title; the capitalization choice controls the indicator. Shared spelling exceptions are applied last. The extension is preserved. Available for Video, Music and Audiobook content types.")
-            }
-            Toggle("Smart title casing (enable Title case above)", isOn: $rules.smartTitleCase)
-            SettingsHint(text: "Smart title case: the lord of the rings → The Lord of the Rings. Keeps configured small words lowercase except at the beginning, end or after a separator. Requires Title case above.")
-            if rules.smartTitleCase { SettingsHint(text: "Uses Universal lowercase title words in General Settings. Preferred-case exceptions apply last and override that list. Each profile independently enables Smart title casing.") }
-            DisclosureGroup("Ordered literal Find → Replace rules") {
-                Text("Find is plain text, not a regular expression. Example: find [HD] and leave Replace blank to remove [HD]. Match limits a rule to anywhere, the beginning (Prefix), or the end (Suffix). Rules run top to bottom after underscore/hyphen/dot replacements, before whitespace/casing. Folder-scoped rules affect destination folder components and Tools → Clean Folder Names; they never touch extensions.").font(.caption).foregroundStyle(.secondary)
-                ForEach($rules.replacements) { $rule in
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Toggle("Enabled", isOn: $rule.enabled).labelsHidden()
-                            TextField("", text: $rule.find, prompt: Text("example- [HD]").foregroundColor(.secondary))
-                            Text("→")
-                            TextField("", text: $rule.replacement, prompt: Text("Blank deletes the match").foregroundColor(.secondary))
-                        }
-                        HStack {
-                            Picker("Match", selection: Binding(get: { rule.position ?? .anywhere }, set: { rule.position = $0 })) { ForEach(ReplacementPosition.allCases) { Text($0.rawValue.capitalized).tag($0) } }
-                            Picker("Apply to", selection: $rule.target) { ForEach(RuleTarget.allCases) { Text($0.rawValue.capitalized).tag($0) } }
-                            Button("↑") { move(rule.id, offset: -1) }.instantHelp("Run this rule earlier")
-                            Button("↓") { move(rule.id, offset: 1) }.instantHelp("Run this rule later")
-                            Button("Remove") { rules.replacements.removeAll { $0.id == rule.id } }
-                        }.controlSize(.small)
-                    }.padding(.vertical, 5)
-                }
-                Button("Add Replacement Rule") { rules.replacements.append(ReplacementRule()) }
-            }
-            Toggle("Enable Magic for this profile", isOn: $rules.useMagic)
-            Text("Magic combines original filenames, this profile, parent folder names, selected siblings and explicitly remembered corrections. It proposes editable filename components with evidence and alternatives. No full-library scan, online lookup, invented values or automatic execution. When enabled, Magic runs only when you click Run Magic on Selected Files above the file list. Disabling this preference prevents Magic analysis for this profile. Review alternatives, then confirm filename components.").font(.caption).foregroundStyle(.secondary)
-        }
-    }
-}
 struct BatchNamesView: View {
     @EnvironmentObject var m: Model
     @Environment(\.dismiss) var dismiss

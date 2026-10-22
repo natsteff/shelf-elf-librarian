@@ -13,7 +13,11 @@ public enum ProfileSetup {
         profile.name = name; profile.schemaVersion = 2; profile.rootAllowed = true
         profile.classifications = PatternEngine.defaultTypes(for: kind)
         profile.workspacePatterns = PatternEngine.defaults(for: profile)
-        if kind == .video { profile.folderMask = "{Title} ({Year})"; profile.filenameMask = "{Title} ({Year}) [{Resolution?}]" }
+        if kind == .video { profile.folderMask = "{Title} ({Year?})"; profile.filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
+        var rules = profile.rules
+        if [.video, .music, .audiobook].contains(kind) { rules.smartTitleCase = true }
+        if kind == .video { rules.hyphensToSpaces = true; rules.formatEpisodes = true; profile.removeTokens = "" }
+        profile.rules = rules
         profile.extractionMask = ""
         return profile
     }
@@ -21,14 +25,14 @@ public enum ProfileSetup {
     public static func updatingVideoDefaults(_ input: Profile) -> Profile {
         guard input.kind == .video else { return input }
         var p = input
-        if p.folderMask == "{TitleYear}" { p.folderMask = "{Title} ({Year})" }
-        if p.filenameMask == "{TitleYear}" || p.filenameMask == "{Title} ({Year}) [{Resolution}]" { p.filenameMask = "{Title} ({Year}) [{Resolution?}]" }
+        if p.folderMask == "{TitleYear}" || p.folderMask == "{Title} ({Year})" { p.folderMask = "{Title} ({Year?})" }
+        if p.filenameMask == "{TitleYear}" || p.filenameMask == "{Title} ({Year}) [{Resolution}]" || p.filenameMask == "{Title} ({Year}) [{Resolution?}]" { p.filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
         if var types = p.classifications {
             for i in types.indices {
-                if types[i].name == "Movie", types[i].filenameMask == "{Title} ({Year}) [{Resolution}]" { types[i].filenameMask = "{Title} ({Year}) [{Resolution?}]" }
-                if types[i].name == "Movie", types[i].folderMask == "Movies/{TitleYear}" {
-                    types[i].folderMask = "Movies/{Title} ({Year})"
-                    if types[i].filenameMask == nil { types[i].filenameMask = "{Title} ({Year}) [{Resolution?}]" }
+                if types[i].name == "Movie", ["{Title} ({Year}) [{Resolution}]", "{Title} ({Year}) [{Resolution?}]"].contains(types[i].filenameMask ?? "") { types[i].filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
+                if types[i].name == "Movie", ["Movies/{TitleYear}", "Movies/{Title} ({Year})"].contains(types[i].folderMask ?? "") {
+                    types[i].folderMask = "Movies/{Title} ({Year?})"
+                    if types[i].filenameMask == nil { types[i].filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
                 }
                 if types[i].name == "TV Show", types[i].filenameMask == nil {
                     types[i].filenameMask = "{Series} - {EpisodeID} - {EpisodeTitle}"

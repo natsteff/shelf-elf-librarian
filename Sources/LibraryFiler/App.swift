@@ -505,6 +505,7 @@ struct SplashView: View {
 struct MainView: View {
     @EnvironmentObject var m: Model
     @State private var showSplash = true
+    @State private var spellingReview: Set<String> = []
     @State private var hoveredFilenameRow: String?
     @AppStorage("acknowledgedUsageNoticeVersion", store: AppEnvironment.defaults) private var acceptedTermsVersion = ""
     @AppStorage("acknowledgedUsageNoticeAppRelease", store: AppEnvironment.defaults) private var acceptedTermsRelease = ""
@@ -548,8 +549,7 @@ struct MainView: View {
             WorkspaceActionBar().environmentObject(m)
             Divider()
             HSplitView {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                VStack(spacing: 0) {
                         HStack(spacing: 10) {
                             Toggle("Include all visible files", isOn: Binding(get: { !m.visible.isEmpty && m.visible.allSatisfy { m.selected.contains($0.id) } }, set: { _ in m.toggleVisibleSelection() }))
                                 .labelsHidden().frame(width: 28).instantHelp("Select all visible files, or clear them when all are selected.")
@@ -561,18 +561,20 @@ struct MainView: View {
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                         Divider()
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(m.visible) { item in
                             let proposal = try? proposedFilename(item, profile: m.active)
                             let nameMatches = proposal.map { $0.utf8.elementsEqual(item.url.lastPathComponent.utf8) } ?? false
                             HStack(alignment: .top, spacing: 10) {
                                 Toggle("Include", isOn: Binding(get: { m.selected.contains(item.id) }, set: { if $0 { m.selected.insert(item.id) } else { m.selected.remove(item.id) }; m.invalidate() })).labelsHidden().frame(width: 28)
-                                FilenameComparisonView(item: item, nameMatches: nameMatches).environmentObject(m)
+                                FilenameComparisonView(item: item, nameMatches: nameMatches, spellingReviewChanged: { review in if review { spellingReview.insert(item.id) } else { spellingReview.remove(item.id) } }).environmentObject(m)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 VStack(alignment: .center) { Text(item.url.pathExtension.uppercased()); Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)) }.font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 70, alignment: .center).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
-                                Text(nameMatches ? "Unchanged" : proposal == nil ? "Needs attention" : "Rename proposed")
-                                    .font(.system(size: 11)).foregroundStyle(nameMatches ? Color.secondary : proposal == nil ? Color.orange : Color.accentColor)
+                                Text(nameMatches ? (spellingReview.contains(item.id) ? "Spelling review" : "Unchanged") : proposal == nil ? "Needs attention" : "Rename proposed")
+                                    .font(.system(size: 11)).foregroundStyle(nameMatches ? (spellingReview.contains(item.id) ? Color.orange : Color.secondary) : proposal == nil ? Color.orange : Color.accentColor)
                                     .frame(width: 100, alignment: .leading).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
-                                    .instantHelp(nameMatches ? "Filename already matches—no rename needed." : "Proposed filename differs from the current filename.")
+                                    .instantHelp(nameMatches ? (spellingReview.contains(item.id) ? "Unrecognized source words need review. Choose a replacement to create a rename proposal." : "Filename already matches—no rename needed.") : "Proposed filename differs from the current filename.")
                                 Image(systemName: item.reviewed ? "checkmark.circle.fill" : "circle.dashed")
                                     .foregroundStyle(.secondary).frame(width: 44)
                                     .accessibilityLabel(item.reviewed ? "Components confirmed for filing" : "Components unconfirmed for filing")
@@ -594,6 +596,7 @@ struct MainView: View {
                                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.padding(24).allowsHitTesting(false)
                     }
+                }
                 }.frame(minWidth: 600, maxWidth: .infinity)
                 FieldEditor().frame(minWidth: 280, idealWidth: 340, maxWidth: .infinity)
                     .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
@@ -819,91 +822,9 @@ struct SettingsView: View {
         VStack(alignment: .leading) {
             Text("Profile Settings: " + (draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "New Profile" : draft.name)).font(.title2.bold()).lineLimit(2)
             ScrollView { Form {
-                SettingsInput(title: "Profile name", text: $draft.name, example: "My Music")
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Description / Notes").font(.caption.bold()).foregroundStyle(.secondary)
-                    TextEditor(text: Binding(get: { draft.notes ?? "" }, set: { draft.notes = $0 })).font(.body).frame(minHeight: 65, maxHeight: 100)
-                        .padding(5).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-                }
-                Picker("Content type", selection: $draft.kind) { ForEach(Kind.allCases) { Text($0.label).tag($0) } }
-                if draft.kind == .audiobook {
-                    Picker("Book subtype", selection: Binding(get: { draft.effectiveBookSubtype }, set: { draft.bookSubtype = $0 })) {
-                        ForEach(BookSubtype.allCases) { Text($0.label).tag($0) }
-                    }
-                    SettingsHint(text: "Subtype changes the available components. Load defaults updates extensions and masks for this subtype; choosing a subtype alone preserves your custom rules and destination. Existing audiobook profiles stay Audiobook.")
-                }
-                Button("Load defaults for this content type") { var p = ProfileSetup.configured(draft.kind, name: draft.name, subtype: draft.kind == .audiobook ? draft.effectiveBookSubtype : nil); p.id = draft.id; p.name = draft.name; p.root = draft.root; p.rootIdentity = draft.rootIdentity; p.bookmark = draft.bookmark; p.notes = draft.notes; draft = p }
-                SettingsHint(text: "Content type controls filename interpretation and the components shown in the editor. Changing it keeps your rules, extensions and masks. Load defaults replaces those settings for the selected type while preserving this profile’s name and destination.")
-                if draft.kind == .other {
-                    Text("For files needing custom patterns: click Load defaults for this content type to start with unchanged filenames and no parsing. Then enter your extensions and filing rules. Changing the picker alone keeps existing rules.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                SettingsInput(title: "Extensions (comma separated)", text: $draft.extensions, example: "mp3, flac")
-                SettingsHint(text: "Filters workspace files only, without converting them. Matching is case-insensitive: mp4 includes .mp4, .MP4 and .Mp4. Original extensions are preserved.")
-                if draft.kind == .other { Text("Examples: nes, sfc, smc, gba, gb, gbc, n64, nds, chd, iso, zip, 7z. Only the extensions you enter will appear in the workspace.").font(.caption).foregroundStyle(.secondary) }
-                LabeledContent("Destination root") { Text(draft.root.isEmpty ? "Not configured" : draft.root).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
-                Button("Choose Destination Root…") {
-                    let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
-                    WindowPresentation.choose(panel) { response in
-                        guard response == .OK, let u = panel.url else { return }
-                        do { let d = try Directory(u.path); draft.rootIdentity = DirectoryIdentity(device: d.device, inode: d.inode); draft.root = u.path; draft.bookmark = try u.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) } catch { validation = error.localizedDescription }
-                    }
-                }
-                Button("Show Library in Finder", systemImage: "folder") {
-                    let url = URL(fileURLWithPath: draft.root)
-                    let scoped = url.startAccessingSecurityScopedResource()
-                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                    if !showFolderInFinder(url) { validation = "Could not open the library folder. Check the destination path and reconnect it if needed." }
-                }.disabled(draft.root.isEmpty)
-                SettingsHint(text: "Choose the actual library folder for this profile—for example your Music or Audiobooks folder. Use separate profiles for locations with different rules. The folder mask below can create artist, album or other subfolders. Preview shows the full destination before Apply.")
-                if !m.recommendations(for: draft).isEmpty || m.observations.contains(where: { $0.profileID == draft.id }) {
-                    Button("Recommendations & Learning (\(m.recommendations(for: draft).count))…") { showRecommendations = true }
-                }
-                Section("Filename cleaning") {
-                    Button("Universal Spelling & Case Preference Exceptions…") { showGeneral = true }
-                    SettingsHint(text: "Applies to every profile. Opens General Settings, also available on the main screen. Old per-profile exception lists are no longer used.")
-                    Toggle("Replace underscores with spaces", isOn: $draft.replaceUnderscores)
-                    SettingsHint(text: "Song_Title → Song Title")
-                    Toggle("Treat separator dots as spaces", isOn: $draft.replaceDots)
-                    SettingsHint(text: "Song.Title → Song Title. Numeric decimals and dotted initials are preserved by this rule.")
-                    Toggle("Title case", isOn: $draft.titleCase)
-                    SettingsHint(text: "song title → Song Title. This can also change BT-AI to Bt-Ai; add BT-AI in General Settings → Universal Spelling & Case Preference Exceptions to preserve its spelling.")
-                    Toggle("Normalize repeated spaces and trim whitespace", isOn: Binding(get: { draft.normalizeSpaces ?? true }, set: { draft.normalizeSpaces = $0 }))
-                    SettingsHint(text: "Repeated spaces become one space; leading and trailing whitespace is removed.")
-                    SettingsInput(title: "Removable labels (comma separated)", text: $draft.removeTokens, example: "[Official Audio], [HD]")
-                    SettingsHint(text: "Removable labels delete matching text. Universal exceptions only adjust text that remains; they do not protect it from removal.")
-                    if !m.universalPreferences.overlaps(removableLabels: draft.removeTokens).isEmpty {
-                        SettingsHint(text: "Removal takes precedence here: " + m.universalPreferences.overlaps(removableLabels: draft.removeTokens).joined(separator: ", ") + ". Other profiles can still retain these with the universal preferred case.")
-                    }
-                    SettingsHint(text: "Song [Official Audio] → Song when [Official Audio] is listed. Matches are case-insensitive and can occur anywhere at word boundaries, not just at the end. Enter the brackets too if they should be removed.")
-                    SettingsInput(title: "Prefix (optional)", text: $draft.prefix, example: "Archive - ")
-                    SettingsInput(title: "Suffix (optional)", text: $draft.suffix, example: " - Reviewed")
-                    SettingsHint(text: "Added once to the assembled filename, before the original extension. Include any spaces or separators you want. Blank adds nothing. Cleaning settings change proposals; preview and Apply are still required.")
-                    Toggle("Remember confirmed corrections for Magic by default", isOn: Binding(get: { draft.rememberCorrectionsByDefault ?? true }, set: { draft.rememberCorrectionsByDefault = $0 }))
-                    SettingsHint(text: "Starts Remember checked for files loaded with this profile. You can turn it off for selected files in the workspace. Only corrections from successfully applied operations become examples; forget examples in Recommendations & Learning. Changes to this default apply on the next workspace refresh.")
-                    PreparationSettings(rules: Binding(get: { draft.rules }, set: { draft.rules = $0 }), supportsEpisodes: draft.supportsEpisodes)
-                }
-                Section("Interpretation & output masks") {
-                    Button("Workspace Filename Patterns & Filing Types…") { showPatterns = true }
-                    SettingsHint(text: "Ordered input patterns extract filename components. Types can choose folder and filename layouts. Test against selected workspace files before saving.")
-                    Button("Interpretation & Output Masks Guide…") { showMaskGuide = true }
-                    if draft.workspacePatterns?.contains(where: { $0.compatibility }) == true {
-                        SettingsInput(title: "Legacy extraction mask (compatibility rule)", text: $draft.extractionMask, example: "{Artist} - {Title}")
-                    }
-                    Text("Workspace patterns define input interpretation. A legacy extraction mask applies only through an enabled compatibility rule. Review captured components before filing.").font(.caption)
-                    SettingsInput(title: "Folder mask", text: $draft.folderMask, example: "{Artist}/{Album}")
-                    SettingsHint(text: "Builds subfolders below the destination root. Type/System/Genre mappings can override this mask. Blank adds no subfolders. Optional folder segments use {Series?}; {BookFolder} combines the series number, when present, with BookTitle.")
-                    SettingsInput(title: "Filename mask (without extension)", text: $draft.filenameMask, example: "{Artist} - {Title}")
-                    SettingsHint(text: "The filename mask specifies which filename components appear in the proposed name and their order. For example, {Artist} - {Title} combines Artist and Title with “ - ” between them. The original extension is added automatically. The editor shows components for the profile content type; folder masks may need additional components.")
-                    Text("Filename components: Title, Year, TitleYear, Artist, Album, Author, BookTitle, ChapterNumber, ChapterNumber:02, ChapterTitle, ChapterOrBook, Bucket, AlbumOrIndividual, Series, Season:02, Episode:02, EpisodeID, EpisodeTitle, Date, Revision. Additional components: Type, System, Genre, Game, Product, Version, Platform, Architecture, DateTaken, Event, Region, Edition, BookFolder, Narrator, Publisher, Illustrator, IssueNumber, Volume, SeriesNumber, TrackNumber, TrackNumber:02, RecordingType, Live. {Live} is optional and blank for Studio/Unspecified; use ? on a component to make a folder segment optional. Other components are required when referenced. Folder masks use / between components.").font(.caption)
-                    if draft.kind == .music {
-                        Toggle("Music first-letter bucket", isOn: $draft.bucket)
-                        SettingsInput(title: "Custom individual tracks folder (optional)", text: $draft.individualTracks, example: "Individual Tracks")
-                        TextField("Number bucket", text: Binding(get: { draft.rules.numericBucket }, set: { var r = draft.rules; r.numericBucket = $0; draft.rules = r }))
-                        TextField("Symbol bucket", text: Binding(get: { draft.rules.symbolBucket }, set: { var r = draft.rules; r.symbolBucket = $0; draft.rules = r }))
-                        Toggle("Ignore leading The for bucket only", isOn: Binding(get: { draft.rules.ignoreLeadingThe }, set: { var r = draft.rules; r.ignoreLeadingThe = $0; draft.rules = r }))
-                    }
-                }
+                ProfileSettingsContent(profile: $draft, validation: $validation,
+                    patterns: { showPatterns = true }, guide: { showMaskGuide = true },
+                    general: { showGeneral = true }, recommendations: { showRecommendations = true })
                 if !validation.isEmpty { Text(validation).foregroundStyle(.red) }
             }.formStyle(.grouped).textFieldStyle(.roundedBorder) }
             Divider().padding(.top, 8).padding(.bottom, 10)

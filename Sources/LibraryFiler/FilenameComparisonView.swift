@@ -36,6 +36,7 @@ struct FilenameComparisonView: View {
     @EnvironmentObject var m: Model
     let item: Item
     let nameMatches: Bool
+    var spellingReviewChanged: (Bool) -> Void = { _ in }
     @State private var difference = FilenameDifference(source: "", proposed: "")
     @State private var expanded = false
     @State private var unrecognized: [FilenameSpellingWord] = []
@@ -153,11 +154,11 @@ struct FilenameComparisonView: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text("Updates matching words in this file’s proposal only. Rename applies the change to disk.") }
         .task(id: spellingKey) {
-            unrecognized = []
+            unrecognized = []; spellingReviewChanged(false)
             guard m.universalPreferences.flagUnrecognizedWords ?? true else { checkingSpelling = false; return }
             checkingSpelling = true
             let checked = await FilenameSpellChecker.shared.unrecognized(in: sourceBasename, exceptions: m.universalPreferences.combinedEntries)
-            if !Task.isCancelled { unrecognized = checked; checkingSpelling = false }
+            if !Task.isCancelled { unrecognized = checked; checkingSpelling = false; spellingReviewChanged(!checked.isEmpty) }
         }
         .onAppear { update() }
         .onChange(of: filename) { update() }

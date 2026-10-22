@@ -553,6 +553,26 @@ final class FilerCoreTests {
     }
     func testPatternLiteralsValidationAndCustomFields() throws {
         let defaults = ProfileSetup.configured(.video, name: "Video")
+        var untitledYear = Fields(); untitledYear.title = "Movie"
+        XCTAssertEqual(try Names.render(defaults.folderMask, fields: untitledYear, profile: defaults, source: src, folder: true), "Movie")
+        XCTAssertEqual(try Names.render(defaults.filenameMask, fields: untitledYear, profile: defaults, source: src, folder: false), "Movie")
+        untitledYear.resolution = "720p"
+        XCTAssertEqual(try Names.render(defaults.filenameMask, fields: untitledYear, profile: defaults, source: src, folder: false), "Movie [720p]")
+        untitledYear.year = "1999"
+        XCTAssertEqual(try Names.render(defaults.filenameMask, fields: untitledYear, profile: defaults, source: src, folder: false), "Movie (1999) [720p]")
+        XCTAssertTrue(defaults.rules.hyphensToSpaces); XCTAssertTrue(defaults.rules.smartTitleCase); XCTAssertTrue(defaults.rules.formatEpisodes)
+        XCTAssertEqual(defaults.removeTokens, "")
+        for kind in Kind.allCases {
+            var profile = ProfileSetup.configured(kind, name: kind.label)
+            if kind == .other { profile.extensions = "txt" }
+            XCTAssertFalse(profile.replaceDots && profile.rules.dotsToDashes)
+            XCTAssertFalse(profile.rules.useMagic)
+            if [.video, .music, .audiobook].contains(kind) { XCTAssertTrue(profile.rules.smartTitleCase) }
+            try profile.validate()
+        }
+        var conflict = defaults; var conflictRules = conflict.rules; conflictRules.dotsToDashes = true; conflict.rules = conflictRules
+        XCTAssertThrowsError(try conflict.validate())
+        conflict.replaceDots = false; try conflict.validate()
         for original in ["s01e10 - My Series - Claudio", "My Series - s01e10 - Claudio", "My Series - Claudio - s01e10"] {
             let url = src.appendingPathComponent(original + ".mp4")
             let f = Names.basicInterpret(url, defaults).0
@@ -574,7 +594,7 @@ final class FilerCoreTests {
         previous.workspacePatterns = defaults.workspacePatterns?.filter { !$0.pattern.contains("{Resolution}") && !["{EpisodeID} - {Series} - {EpisodeTitle}", "{Series} - {EpisodeTitle} - {EpisodeID}", "{EpisodeIDAnywhere}", "({Year}) - {Title}", "({Year}) {Title}", "{Year} - {Title}", "{ParenthesizedYearAnywhere}"].contains($0.pattern) }
         let upgraded = ProfileSetup.updatingVideoDefaults(previous)
         XCTAssertEqual(upgraded.workspacePatterns?.count, defaults.workspacePatterns?.count)
-        XCTAssertEqual(upgraded.filenameMask, "{Title} ({Year}) [{Resolution?}]")
+        XCTAssertEqual(upgraded.filenameMask, "{Title} ({Year?}) [{Resolution?}]")
         XCTAssertEqual(ProfileSetup.updatingVideoDefaults(upgraded), upgraded)
         for original in ["Kingdom of Heaven (Extended Version) 2005 1280p.mp4", "Kingdom of Heaven (Extended Version) (2005) [1280P].mp4"] {
             let url = src.appendingPathComponent(original)
@@ -593,8 +613,8 @@ final class FilerCoreTests {
         requiredDefault.filenameMask = "{Title} ({Year}) [{Resolution}]"
         requiredDefault.classifications?[0].filenameMask = requiredDefault.filenameMask
         let optionalDefault = ProfileSetup.updatingVideoDefaults(requiredDefault)
-        XCTAssertEqual(optionalDefault.filenameMask, "{Title} ({Year}) [{Resolution?}]")
-        XCTAssertEqual(optionalDefault.classifications?[0].filenameMask, "{Title} ({Year}) [{Resolution?}]")
+        XCTAssertEqual(optionalDefault.filenameMask, "{Title} ({Year?}) [{Resolution?}]")
+        XCTAssertEqual(optionalDefault.classifications?[0].filenameMask, "{Title} ({Year?}) [{Resolution?}]")
         var custom = defaults; custom.filenameMask = "{Title}, {Year}"; custom.folderMask = "{Title}"
         XCTAssertEqual(ProfileSetup.updatingVideoDefaults(custom).filenameMask, custom.filenameMask)
         XCTAssertEqual(ProfileSetup.updatingVideoDefaults(custom).folderMask, custom.folderMask)
@@ -604,9 +624,9 @@ final class FilerCoreTests {
         let movieURL = src.appendingPathComponent("Kong of Hell 2005 720P.mp4")
         var movieFields = Names.basicInterpret(movieURL, video).0
         XCTAssertEqual(movieFields.resolution, "720p")
-        XCTAssertEqual(try Names.render(video.filenameMask, fields: movieFields, profile: video, source: movieURL, folder: false), "Kong Of Hell (2005) [720p]")
+        XCTAssertEqual(try Names.render(video.filenameMask, fields: movieFields, profile: video, source: movieURL, folder: false), "Kong of Hell (2005) [720p]")
         movieFields.resolution = ""
-        XCTAssertEqual(try Names.render(video.filenameMask, fields: movieFields, profile: video, source: movieURL, folder: false), "Kong Of Hell (2005)")
+        XCTAssertEqual(try Names.render(video.filenameMask, fields: movieFields, profile: video, source: movieURL, folder: false), "Kong of Hell (2005)")
         let oldFields = try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Movie","custom":{"Resolution":"1080P"}}"#.utf8))
         XCTAssertEqual(oldFields.resolution, "1080p")
         XCTAssertEqual(try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Movie"}"#.utf8)).resolution, "")

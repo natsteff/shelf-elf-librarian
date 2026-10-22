@@ -29,7 +29,7 @@ Each configured classification can inherit the profile's masks or override its f
 
 Examples:
 
-- Movie: `Movies/{TitleYear}`
+- Movie: `Movies/{Title} ({Year?})`
 - TV Show: `TV Shows/{Series}/Season {Season:02}`
 - Commercial: `Commercials`
 - ROMs: profile folder mask `{System}`
@@ -71,7 +71,7 @@ Output `{TitleYear} [{Resolution?}]` produces `Movie (2005) [720p]`, or `Movie (
 
 ### Movie defaults
 
-New video profiles use explicit movie folder `{Title} ({Year})` and filename `{Title} ({Year}) [{Resolution?}]` masks. Year is required; Resolution is optional and its brackets are omitted when blank. Users may remove `?` to require Resolution instead. Missing required values are displayed below the filename editor. TV Show mappings retain Series/Season folders and episode filenames.
+New video profiles use explicit movie folder `{Title} ({Year?})` and filename `{Title} ({Year?}) [{Resolution?}]` masks. Year and Resolution are optional; their surrounding parentheses/brackets disappear when blank. Remove `?` to require a component instead. Missing required values are displayed below the filename editor. TV Show mappings retain Series/Season folders and episode filenames.
 
 Default ordered input patterns recognize trailing years (1900–2100) with bare or bracketed numeric p/i resolution labels before generic Type or Title patterns. Leading title numbers are retained. Magic uses the same configured interpretation first; alternatives remain manual. No dimension inference or DVD/Blu-ray source detection is performed. Literal output characters and labels are preserved. Only unchanged shipped defaults are upgraded; custom input sequences and masks are retained.
 
@@ -80,3 +80,13 @@ Default ordered input patterns recognize trailing years (1900–2100) with bare 
 Video defaults include EpisodeID-first and EpisodeID-last patterns. The ordered, editable `{EpisodeIDAnywhere}` recognition rule captures one standalone S/E identifier anywhere; when remaining text has two clear ` - ` sections, they become Series and EpisodeTitle. Otherwise Series remains blank for review. Multiple episode identifiers are not guessed.
 
 Year-first defaults accept `({Year}) - {Title}`, `({Year}) {Title}`, and `{Year} - {Title}`. `{ParenthesizedYearAnywhere}` recognizes one explicit parenthesized year (1900–2100) and removes surrounding edge separators. Multiple candidate years require review. Bare leading years without a separator remain in Title; manual Magic may offer a limited-evidence alternative. Output structure remains determined by the user's masks. Upgrades only extend unchanged shipped input sequences; custom sequences retain their order and contents.
+
+### Profile settings flow and defaults
+
+Every content type uses Profile & destination → Read filenames → Clean components → Build names & folders → Magic & learning. Video exposes Movie and TV Show mapping masks directly; advanced type overrides remain in Filing Types. Examples and component references follow content type/book subtype.
+
+New video/music/book profiles enable smart title case. New video profiles also enable hyphens-to-spaces and episode formatting and start with no removable labels. Existing cleanup choices are not overwritten. ROM/photo/software/custom cleanup stays conservative. Magic remains opt-in.
+
+Period handling has one choice: Keep periods, Separator periods → spaces, or All periods → spaced hyphens. A legacy profile with both transformations enabled must select one before saving. Existing saved files can still be opened for correction; no automatic choice is made.
+
+The workspace column header stays fixed above scrolling rows. A flagged unrecognized word shows Spelling review when the proposed name is unchanged; applying a spelling replacement that changes the name shows Rename proposed.
