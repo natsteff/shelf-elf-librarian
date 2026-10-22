@@ -332,7 +332,7 @@ struct WorkspaceSession: Codable {
         guard !profiles.isEmpty, let root = workspace else { return }; let p = active, recurse = recursive
         cancellation = Cancellation(); let token = cancellation
         busy = true; status = "Discovering eligible files…"; progress = "Scanning"; invalidate()
-        Task { do { let r = try await Task.detached { try scan(root, profile: p, recursive: recurse, cancel: token) }.value; items = r.items.map { var item = $0; item.rememberCorrection = p.rememberCorrectionsByDefault ?? true; return item }; excluded = r.excluded; selected = []; status = "\(items.count.formatted()) eligible • \(excluded.count.formatted()) excluded" } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
+        Task { do { let r = try await Task.detached { try await scanMedia(root, profile: p, recursive: recurse, cancel: token) }.value; items = r.items.map { var item = $0; item.rememberCorrection = p.rememberCorrectionsByDefault ?? true; return item }; excluded = r.excluded; selected = []; status = "\(items.count.formatted()) eligible • \(excluded.count.formatted()) excluded" } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
     }
     func updateFields(_ edit: (inout Fields) -> Void) { for i in items.indices where selected.contains(items[i].id) && visible.contains(where: { $0.id == items[i].id }) { edit(&items[i].fields); items[i].fields.artist = RuleEngine.artistName(items[i].fields.artist, profile: active); items[i].overrideBasename = nil; items[i].reviewed = false }; invalidate() }
     func selectRow(_ id: String) { selected = [id]; invalidate() }
@@ -454,7 +454,7 @@ struct WorkspaceSession: Codable {
                     let refreshToken = Cancellation(); cancellation = refreshToken
                     progress = "Refreshing workspace…"
                     do {
-                        let fresh = try await Task.detached { try scan(root, profile: profile, recursive: recurse, cancel: refreshToken) }.value
+                        let fresh = try await Task.detached { try await scanMedia(root, profile: profile, recursive: recurse, cancel: refreshToken) }.value
                         let updated = OperationPresentation.reconcile(existing: existing, scanned: fresh.items, selected: remainingSelection, completed: completed, rememberNew: profile.rememberCorrectionsByDefault ?? true)
                         items = updated.items; selected = updated.selected; excluded = fresh.excluded
                         let ids = Set(items.map(\.id)); directRenameUndo = directRenameUndo.filter { ids.contains($0.key) }
@@ -857,6 +857,7 @@ struct FieldEditor: View {
                 Text((m.visibleSelected.count > 1 ? "Interpretation shown for: " : "Current filename: ") + item.url.lastPathComponent)
                     .font(.system(size: 12, weight: .medium)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }
+            if let item = m.visibleSelected.first { EmbeddedMetadataButton(item: item, showLabel: true) }
             Text("Edits update proposed names. Rename Selected or the row checkmark applies them in the current folders.").font(.caption).foregroundStyle(.secondary)
             ClassificationField().environmentObject(m)
             MediaCategoryField().environmentObject(m)
@@ -922,7 +923,7 @@ struct FieldEditor: View {
             DisclosureGroup("How edits and filing work") {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("Row rename buttons and Return in the name editor rename files immediately in the workspace. Component confirmation here is separate and is used for filing. Successful direct renames are deselected.")
-                    Text("Parts such as Artist and Title are interpreted from filenames; Magic may also use folder names and remembered corrections. Embedded media tags are not read or changed.")
+                    Text("Filename components come from filenames; Magic may also use folder names and remembered corrections. MP3 tags are read-only reference information. Video metadata can fill missing components used by masks. No tags are changed.")
                     Text("Only successful, user-approved operations supply learning examples. Remembering allows Magic to reuse them in this profile; it never changes rules automatically.")
                     Text("Edits apply to selected visible files. Mixed filename components stay unchanged unless you type a replacement. Shared author/book filename components define an audiobook group.")
                 }.font(.system(size: 12)).foregroundStyle(.secondary)

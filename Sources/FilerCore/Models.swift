@@ -159,6 +159,7 @@ public struct Item: Identifiable {
     public var evidence: String
     public var reviewed: Bool
     public var overrideBasename: String?
+    public var metadata = EmbeddedMetadata()
     public var alternatives: [Interpretation] = []
     public var confidence = "Needs review"
     public var initialFields: Fields?

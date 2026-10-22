@@ -40,7 +40,7 @@ public enum OperationPresentation {
     public static func reconcile(existing: [Item], scanned: [Item], selected: Set<String>, completed: Set<String>, rememberNew: Bool) -> (items: [Item], selected: Set<String>) {
         let before = Dictionary(uniqueKeysWithValues: existing.filter { !completed.contains($0.id) }.map { ($0.id, $0) })
         let items = scanned.map { fresh in
-            if var prior = before[fresh.id] { prior.size = fresh.size; prior.url = fresh.url; return prior }
+            if var prior = before[fresh.id] { prior.size = fresh.size; prior.url = fresh.url; prior.metadata = fresh.metadata; return prior }
             var added = fresh; added.rememberCorrection = rememberNew; return added
         }
         return (items, selected.subtracting(completed).intersection(Set(items.map(\.id))))

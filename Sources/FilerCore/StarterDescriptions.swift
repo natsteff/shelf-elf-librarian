@@ -11,7 +11,7 @@ public enum StarterDescriptions {
         "Music": (.music, """
         Clean and organize individual tracks, albums and live recordings using Artist, Album, Title, Track Number, Year and Genre. Optional artist buckets divide larger collections into A–Z, number and symbol folders.
 
-        Suggested organization: Artist/Album, or Genre/Artist/Album if genre is important to your collection. Use universal exceptions for artist names with unusual spelling or capitalization. Values currently come from filenames or manual entry; embedded audio tags are not read.
+        Suggested organization: Artist/Album, or Genre/Artist/Album if genre is important to your collection. Use universal exceptions for artist names with unusual spelling or capitalization. Components come from filenames or manual entry. Use the tag icon to inspect MP3 tags as read-only reference information; tags never automatically change components or proposed names.
         """),
         "Audiobooks": (.audiobook, """
         Organize audiobooks by full author name, optional series and book title. Keep Series Number separate from Chapter Number so numbered books and their individual chapters remain correctly grouped.

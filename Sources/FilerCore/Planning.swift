@@ -246,6 +246,7 @@ public func scan(_ root: URL, profile: Profile, recursive: Bool, cancel: Cancell
             let (f, evidence, reviewed) = Names.basicInterpret(url, profile) { label in if !triggered.contains(label) { triggered.append(label) } }
             var item = Item(url: url, size: Int64(v.fileSize ?? 0), fields: f, evidence: evidence, reviewed: reviewed)
             if MediaRouting.enabled(profile) { item.evidence += "\n" + MediaRouting.resolve(fields: f, source: url, profile: profile).1 }
+            if url.pathExtension.lowercased() == "mp3" { item.metadata = MP3Metadata.read(url) }
             item.rulesTriggered = triggered
             item.initialFields = f; item.initialBasename = try? proposedBasename(item, profile: profile)
             items.append(item)

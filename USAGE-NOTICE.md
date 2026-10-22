@@ -17,7 +17,7 @@ SHELF ELF LIBRARIAN — APPLICATION DETAILS
 
 Shelf Elf Librarian prepares filenames and can rename, copy or move selected files and rename explicitly selected folders. Applied moves and renames change filesystem locations or names. Undo may be unavailable or refused when files or destinations have changed. Storage failures, interruptions or other software can affect outcomes. Keep backups and review the complete operation preview before applying changes.
 
-This alpha version is under development. It does not read or modify embedded media metadata tags. Magic proposes interpretations and can remember approved corrections locally; it does not independently execute file operations.
+This alpha version is under development. It reads MP3 tags as reference information and supported video metadata to supplement missing filename components. It does not modify or remove embedded metadata tags. Magic proposes interpretations and can remember approved corrections locally; it does not independently execute file operations.
 
 Project and support: https://github.com/natsteff/shelf-elf-librarian
 These application details explain behavior only; they add no restrictions to AGPL-3.0.

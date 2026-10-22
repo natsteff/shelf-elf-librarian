@@ -114,7 +114,13 @@ public enum Magic {
         let results = try items.map { input in
             if cancel.cancelled { throw fail("Magic analysis cancelled; existing proposals unchanged.") }
             var item = input
-            let options = suggestions(url: item.url, profile: profile, related: items, memories: memories)
+            let options = suggestions(url: item.url, profile: profile, related: items, memories: memories).map { option in
+                var enriched = option
+                let extra = item.metadata.fillingVideoFields(option.fields, profile: profile, source: item.url)
+                enriched.fields = extra.0
+                if !extra.1.isEmpty { enriched.evidence += "\n" + extra.1.joined(separator: "\n") }
+                return enriched
+            }
             item.alternatives = options
             if let first = options.first {
                 // Deliberate field edits and overrides are never replaced by an analysis pass.

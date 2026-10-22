@@ -151,7 +151,10 @@ struct ProfileSettingsContent: View {
             }
             Text("Available components: " + componentReference).font(.caption)
             if profile.kind == .photos || profile.kind == .music || profile.kind == .audiobook {
-                SettingsHint(text: "Components come from filenames or explicitly configured parent-folder patterns. Embedded tags and EXIF data are not read.")
+                SettingsHint(text: "Components come from filenames or explicitly configured parent-folder patterns. MP3 tags are available as read-only reference information; they never fill components automatically. Photo EXIF data is not read.")
+            }
+            if profile.kind == .video {
+                SettingsHint(text: "MP4, M4V and MOV metadata can fill missing components used by the active output masks. Existing filename values and manual edits win. The tag icon shows values and differences. Other video formats continue to use filename interpretation. No tags are changed.")
             }
         }
         Section("3. Clean components") {
@@ -216,7 +219,7 @@ struct ProfileSettingsContent: View {
         }
         Section("5. Magic & learning") {
             Toggle("Enable Magic for this profile", isOn: Binding(get: { profile.rules.useMagic }, set: { var r = profile.rules; r.useMagic = $0; profile.rules = r }))
-            SettingsHint(text: "Run Magic analyzes selected visible files, then asks you to confirm Copy or Move to Library. Output masks determine proposed names and destinations. The default operation follows the workspace dropdown. Nothing is copied or moved until confirmation. No online lookup or embedded metadata reading.")
+            SettingsHint(text: "Run Magic analyzes selected visible files, then asks you to confirm Copy or Move to Library. Output masks determine proposed names and destinations. The default operation follows the workspace dropdown. Nothing is copied or moved until confirmation. No online lookup. MP3 tags are read-only reference information; video metadata can fill missing components used by output masks. No tags are changed.")
             Toggle("Remember confirmed corrections by default", isOn: Binding(get: { profile.rememberCorrectionsByDefault ?? true }, set: { profile.rememberCorrectionsByDefault = $0 }))
             SettingsHint(text: "Starts Remember checked after refresh. Only successful, approved operations supply examples. You can turn it off for selected files or forget examples below.")
             Button("Recommendations & Learning…", action: recommendations)

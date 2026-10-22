@@ -83,10 +83,14 @@ struct FilenameComparisonView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(differenceText(item.url.lastPathComponent, changes: difference.removed, source: true, unrecognized: spellingIndices, highlight: highlight))
-                .font(.system(size: 14)).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
-                .changedTextHover(text: item.url.lastPathComponent, changes: highlight ? difference.removed : [], source: true, fontSize: 14, comparison: difference)
-                .overlay { SpellingContextMenu(text: item.url.lastPathComponent, words: unrecognized, bold: highlight ? difference.removed : [], choose: choose) }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(differenceText(item.url.lastPathComponent, changes: difference.removed, source: true, unrecognized: spellingIndices, highlight: highlight))
+                    .font(.system(size: 14)).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
+                    .changedTextHover(text: item.url.lastPathComponent, changes: highlight ? difference.removed : [], source: true, fontSize: 14, comparison: difference)
+                    .overlay { SpellingContextMenu(text: item.url.lastPathComponent, words: unrecognized, bold: highlight ? difference.removed : [], choose: choose) }
+                EmbeddedMetadataButton(item: item)
+                Spacer(minLength: 0)
+            }.frame(maxWidth: .infinity, alignment: .leading)
             DirectFilenameEditor(item: item, nameMatches: nameMatches,
                 highlightedProposal: differenceText(basename, changes: difference.inserted, source: false, highlight: highlight), changedCharacters: highlight ? difference.inserted : [], comparison: difference)
                 .environmentObject(m)
