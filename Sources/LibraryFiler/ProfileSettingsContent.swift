@@ -210,6 +210,17 @@ struct ProfileSettingsContent: View {
                 Toggle("Move leading “The” to end of artist name", isOn: Binding(get: { profile.rules.artistTheToEnd ?? false }, set: { var r = profile.rules; r.artistTheToEnd = $0; profile.rules = r }))
                 SettingsHint(text: "The Beatles → Beatles, The. Changes the Artist component used in proposed names, folders and buckets. Embedded tags remain unchanged. Independent of Ignore leading The for bucket only; both options default off.")
             }
+            if profile.kind == .music {
+                DisclosureGroup("MP3 Tags to Keep") {
+                    SettingsHint(text: "Tools → Purge Other MP3 Tags uses this keep list. Every option is kept by default, including artwork and other/custom tags. Uncheck only what you want removed. Other/custom includes user text, URLs, encoder information and sort fields. Saving this profile does not modify files.")
+                    ForEach(MP3KeepTag.allCases) { tag in
+                        Toggle(tag.label, isOn: Binding(get: { (profile.mp3TagsToKeep ?? Set(MP3KeepTag.allCases)).contains(tag) }, set: { keep in
+                            var tags = profile.mp3TagsToKeep ?? Set(MP3KeepTag.allCases)
+                            if keep { tags.insert(tag) } else { tags.remove(tag) }; profile.mp3TagsToKeep = tags
+                        }))
+                    }
+                }
+            }
             if profile.kind != .video && profile.supportsEpisodes { DisclosureGroup("Optional episode formatting") { EpisodeFormattingSettings(rules: Binding(get: { profile.rules }, set: { profile.rules = $0 })) } }
             DisclosureGroup("Components & mask reference") {
                 Text(componentReference).font(.caption)

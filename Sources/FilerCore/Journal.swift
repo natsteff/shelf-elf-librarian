@@ -7,6 +7,7 @@ import Darwin
 @_silgen_name("sqlite3_prepare_v2") private func sqlPrepare(_ db: OpaquePointer!, _ sql: UnsafePointer<CChar>!, _ n: Int32, _ statement: UnsafeMutablePointer<OpaquePointer?>!, _ tail: UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Int32
 @_silgen_name("sqlite3_step") private func sqlStep(_ s: OpaquePointer!) -> Int32
 @_silgen_name("sqlite3_finalize") private func sqlFinalize(_ s: OpaquePointer!) -> Int32
+@_silgen_name("sqlite3_changes") private func sqlChanges(_ db: OpaquePointer!) -> Int32
 @_silgen_name("sqlite3_column_text") private func sqlText(_ s: OpaquePointer!, _ i: Int32) -> UnsafePointer<UInt8>!
 public struct Event: Codable, Identifiable {
     public var id = UUID(); public var date = Date(); public var operation: UUID; public var row: PlanRow; public var state: String; public var detail: String; public var temporary: String?
@@ -16,14 +17,42 @@ public final class Journal {
     private var db: OpaquePointer?
     public init(url: URL) throws {
         guard sqlOpen(url.path, &db) == 0 else { throw fail("Cannot open journal.") }
-        try exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS folder_events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL);")
+        try exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS folder_events (seq INTEGER PRIMARY KEY, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS remembered_corrections (id TEXT PRIMARY KEY, json TEXT NOT NULL);")
     }
     deinit { _ = sqlClose(db) }
     private func quoted(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "''") + "'" }
     private func exec(_ sql: String) throws { guard sqlExec(db, sql, nil, nil, nil) == 0 else { throw fail("Journal write failed; operation stopped.") } }
+    /// Prune records only. Never remove any source, destination or recovery file.
+    public func pruneHistory(now: Date = Date()) throws {
+        let cutoff = now.addingTimeInterval(-30 * 24 * 60 * 60).timeIntervalSinceReferenceDate
+        try exec("BEGIN IMMEDIATE")
+        var removed = 0
+        do {
+            let all = try events()
+            let oldCorrections = Set(all.filter { $0.date.timeIntervalSinceReferenceDate < cutoff }.compactMap { $0.row.correction?.id })
+            for correction in Learning.observations(events: all) where correction.remember && oldCorrections.contains(correction.id) {
+                let json = String(decoding: try JSONEncoder().encode(correction), as: UTF8.self)
+                try exec("INSERT OR IGNORE INTO remembered_corrections VALUES (\(quoted(correction.id.uuidString)), \(quoted(json)))")
+            }
+            for table in ["events", "folder_events"] {
+                try exec("DELETE FROM \(table) WHERE json_extract(json, '$.date') < \(cutoff)"); removed += Int(sqlChanges(db))
+            }
+            try exec("DELETE FROM plans WHERE json_extract(json, '$.created') < \(cutoff) AND id NOT IN (SELECT json_extract(json, '$.operation') FROM events)")
+            removed += Int(sqlChanges(db)); try exec("COMMIT")
+        } catch { try? exec("ROLLBACK"); throw error }
+        if removed > 0 { try? exec("VACUUM"); try? exec("PRAGMA wal_checkpoint(TRUNCATE)") }
+    }
+    public func rememberedCorrections() throws -> [ConfirmedCorrection] {
+        var stmt: OpaquePointer?
+        guard sqlPrepare(db, "SELECT json FROM remembered_corrections", -1, &stmt, nil) == 0 else { throw fail("Remembered corrections could not be loaded.") }
+        defer { _ = sqlFinalize(stmt) }; var result: [ConfirmedCorrection] = []
+        while sqlStep(stmt) == 100 { if let text = sqlText(stmt, 0) { result.append(try JSONDecoder().decode(ConfirmedCorrection.self, from: Data(String(cString: text).utf8))) } }
+        return result
+    }
     public func plan(_ p: Plan) throws { let data = try JSONEncoder().encode(p); try exec("INSERT INTO plans VALUES (\(quoted(p.id.uuidString)), \(quoted(String(decoding: data, as: UTF8.self))));") }
-    public func record(_ op: UUID, row: PlanRow, state: String, detail: String = "", temporary: String? = nil, identity: Fingerprint? = nil) throws {
-        let e = Event(operation: op, row: row, state: state, detail: detail, temporary: temporary, resultIdentity: identity)
+    public func record(_ op: UUID, row: PlanRow, state: String, detail: String = "", temporary: String? = nil, identity: Fingerprint? = nil, date: Date = Date()) throws {
+        var e = Event(operation: op, row: row, state: state, detail: detail, temporary: temporary, resultIdentity: identity)
+        e.date = date
         let data = try JSONEncoder().encode(e); try exec("INSERT INTO events(json) VALUES (\(quoted(String(decoding: data, as: UTF8.self))));")
     }
     public func recordFolder(_ event: FolderEvent) throws {
@@ -165,6 +194,7 @@ public final class Executor {
         try journal.record(event.operation, row: event.row, state: "Recovered original location", identity: try Fingerprint(fd: fd))
     }
     public func undo(_ event: Event, allowDeleteCopy: Bool) throws {
+        guard event.date >= Date().addingTimeInterval(-30 * 24 * 60 * 60) else { throw fail("This operation’s 30-day Undo period has expired.") }
         guard ["Copied", "Moved"].contains(event.state), event.resultIdentity != nil else { throw fail("This event cannot be automatically undone.") }
         let row = event.row; let dest = URL(fileURLWithPath: row.destination); let parent = try Directory(dest.deletingLastPathComponent().path)
         let fd = try sourceFD(dest); defer { close(fd) }

@@ -97,7 +97,7 @@ struct FilenameComparisonView: View {
             if let proposalError { Text(proposalError).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             if difference.changed || !unrecognized.isEmpty {
                 Button { expanded.toggle() } label: {
-                    Label(expanded ? "Hide changes" : "Show changes", systemImage: expanded ? "chevron.up" : "chevron.down")
+                    Label(difference.changed ? (expanded ? "Hide proposed changes" : "Show proposed changes") : (expanded ? "Hide spelling details" : "Show spelling details"), systemImage: expanded ? "chevron.up" : "chevron.down")
                 }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
                 if expanded {
                     VStack(alignment: .leading, spacing: 6) {

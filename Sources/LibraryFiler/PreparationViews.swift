@@ -266,6 +266,11 @@ struct DirectFilenameEditor: View {
     @FocusState private var focused: Bool
     private var proposed: String { (try? proposedBasename(item, profile: m.active)) ?? "" }
     private var edited: Bool { !draft.utf8.elementsEqual(proposed.utf8) }
+    private func focusRequestedFilename() {
+        guard m.filenameFocusID == item.id else { return }
+        draft = proposed; focused = true
+        DispatchQueue.main.async { if m.filenameFocusID == item.id { m.filenameFocusID = nil } }
+    }
     var body: some View {
         VStack(alignment: .trailing, spacing: 3) {
         HStack(spacing: 4) {
@@ -281,7 +286,7 @@ struct DirectFilenameEditor: View {
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 5))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(focused ? Color.accentColor : Color.primary.opacity(0.4), lineWidth: focused ? 1.5 : 1))
                 .onSubmit { if edited || !nameMatches { m.renameNow([item.id], manualBasename: draft); focused = false } }
-                .onExitCommand { draft = proposed; focused = false }
+                .onExitCommand { m.cancelTagEdits(item.id); draft = proposed; focused = false }
                 .changedTextHover(text: draft, changes: focused || edited ? [] : changedCharacters, source: false, fontSize: 13, comparison: comparison)
             Text(item.url.pathExtension.isEmpty ? "" : "." + item.url.pathExtension)
                 .font(.caption).foregroundStyle(.secondary).instantHelp("Original extension is preserved")
@@ -299,7 +304,8 @@ struct DirectFilenameEditor: View {
         }
         if focused { Text("Enter to rename · Esc to cancel").font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing) }
         }
-        .onAppear { draft = proposed }
+        .onAppear { draft = proposed; focusRequestedFilename() }
         .onChange(of: proposed) { draft = proposed }
+        .onChange(of: m.filenameFocusRequest) { focusRequestedFilename() }
     }
 }

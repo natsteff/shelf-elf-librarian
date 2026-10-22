@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Button("Export Settings…") { model.exportSettings() }.disabled(model.busy)
                     Button("Import Settings…") { model.importSettings() }.disabled(model.busy)
                     Divider()
+                    Button("Update MP3 Tags from Components…") { model.prepareMP3Tags(.update) }.disabled(model.busy || model.active.kind != .music || model.visibleSelected.isEmpty)
+                    Button("Purge Other MP3 Tags…") { model.prepareMP3Tags(.purge) }.disabled(model.busy || model.active.kind != .music || model.visibleSelected.isEmpty)
+                    Divider()
                     Button("Clean Folder Names…") { model.prepareFolders() }.disabled(model.workspace == nil || model.busy)
                 }
                 CommandGroup(after: .appInfo) {
@@ -84,6 +87,8 @@ struct WorkspaceSession: Codable {
     private var quickItems: [Item] = []
     private var quickProfile: Profile?
     private var previewItems: [Item] = []
+    @Published var mp3TagPlan: MP3TagPlan?
+    @Published var showMP3Tags = false
     @Published var showHistory = false
     @Published var showSettings = false
     @Published var showExcluded = false
@@ -151,6 +156,9 @@ struct WorkspaceSession: Codable {
         if ids.isSubset(of: selected) { selected.subtract(ids) } else { selected.formUnion(ids) }
         invalidate()
     }
+    var tagEditsBefore: [String: Item] = [:]
+    @Published var filenameFocusID: String?
+    @Published var filenameFocusRequest = UUID()
     @Published var directRenameUndo: [String: Event] = [:]
     private var directRenameBefore: [UUID: Item] = [:]
     func renameNow(_ ids: Set<String>, manualBasename: String? = nil) {
@@ -180,6 +188,7 @@ struct WorkspaceSession: Codable {
                     directRenameUndo.removeValue(forKey: before.id)
                     directRenameBefore[event.id] = before
                     selected.remove(before.id)
+                    tagEditsBefore.removeValue(forKey: before.id)
                     items[index].url = URL(fileURLWithPath: event.row.destination)
                     // Keep component values and their confirmation independent of the direct rename.
                     items[index].overrideBasename = items[index].url.deletingPathExtension().lastPathComponent
@@ -246,7 +255,8 @@ struct WorkspaceSession: Codable {
         } catch { self.error = error.localizedDescription }
     }
     func invalidate() { HoverHelp.shared.hide(); plan = nil; folderPlan = nil; categoryConfirmed = false; showReview = false; showFolders = false }
-    func changeProfile() { selected = []; items = []; invalidate(); AppEnvironment.defaults.set(activeID.uuidString, forKey: "lastProfile"); loadCategories(); if profiles.isEmpty { excluded = []; status = "No library profiles. Open Settings to create one." } else if workspace != nil { refresh() } }
+    func changeProfile() {
+        tagEditsBefore.removeAll(); filenameFocusID = nil; selected = []; items = []; invalidate(); AppEnvironment.defaults.set(activeID.uuidString, forKey: "lastProfile"); loadCategories(); if profiles.isEmpty { excluded = []; status = "No library profiles. Open Settings to create one." } else if workspace != nil { refresh() } }
     func loadCategories() { availableCategories = []; category = "" }
     func saveProfile(_ input: Profile) throws {
         guard !busy else { throw fail("Wait for the running operation before changing profile settings.") }
@@ -467,8 +477,14 @@ struct WorkspaceSession: Codable {
     func loadHistory() {
         do {
             let journal = try Journal(url: support.appendingPathComponent("operations.sqlite"))
+            try journal.pruneHistory()
             events = try journal.events(); folderEvents = try journal.folderEvents()
-            observations = Learning.observations(events: events, forgotten: Set(AppEnvironment.defaults.stringArray(forKey: "forgottenCorrections") ?? []))
+            let forgotten = Set(AppEnvironment.defaults.stringArray(forKey: "forgottenCorrections") ?? [])
+            let current = Learning.observations(events: events, forgotten: forgotten)
+            let currentIDs = Set(current.map(\.id))
+            observations = current + (try journal.rememberedCorrections()).filter { !forgotten.contains($0.id.uuidString) && !currentIDs.contains($0.id) }
+            directRenameUndo = directRenameUndo.filter { $0.value.date >= Date().addingTimeInterval(-30 * 24 * 60 * 60) }
+            let undoIDs = Set(directRenameUndo.values.map(\.id)); directRenameBefore = directRenameBefore.filter { undoIDs.contains($0.key) }
         } catch { self.error = error.localizedDescription }
     }
     func recommendations(for profile: Profile) -> [ProfileRecommendation] {
@@ -689,6 +705,7 @@ struct MainView: View {
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                         Divider()
+                ScrollViewReader { filenameScroll in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(m.visible) { item in
@@ -710,7 +727,7 @@ struct MainView: View {
                                     .instantHelp(item.reviewed ? "Filename components confirmed for filing. Direct renames are separate. Preview still checks required values and destination conflicts." : "For filing, select this file and confirm its filename components in the right panel. Direct renaming does not confirm components.")
                             }.padding(.horizontal, 14).padding(.vertical, 12).background { (m.selected.contains(item.id) ? Color.accentColor.opacity(0.08) : Color.clear).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) } }
                                 .onHover { inside in if inside { hoveredFilenameRow = item.id } else if hoveredFilenameRow == item.id { hoveredFilenameRow = nil } }
-                                .zIndex(hoveredFilenameRow == item.id ? 100 : 0)
+                                .zIndex(hoveredFilenameRow == item.id ? 100 : 0).id(item.id)
                             Divider()
                         }
                     }
@@ -724,6 +741,10 @@ struct MainView: View {
                                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.padding(24).allowsHitTesting(false)
                     }
+                }
+                .onChange(of: m.filenameFocusRequest) {
+                    if let id = m.filenameFocusID { filenameScroll.scrollTo(id, anchor: .center) }
+                }
                 }
                 }.frame(minWidth: 600, maxWidth: .infinity)
                 FieldEditor().frame(minWidth: 280, idealWidth: 340, maxWidth: .infinity)
@@ -760,6 +781,7 @@ struct MainView: View {
                 showTerms = false
             })
         }
+        .onReceive(Timer.publish(every: 3600, on: .main, in: .common).autoconnect()) { _ in if !m.busy { m.loadHistory() } }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowLicenseTerms"))) { _ in showTerms = true }
         .onAppear {
             if termsAcceptanceRequired { showTerms = true }
@@ -780,6 +802,7 @@ struct MainView: View {
         .sheet(isPresented: $m.showSettings) { SettingsView(profile: m.active, existing: m.profiles.contains { $0.id == m.activeID }, save: m.saveProfile, delete: m.deleteProfile).frame(width: 690, height: 740) }
         .sheet(isPresented: $m.showReview, onDismiss: { m.reviewDismissed() }) { ReviewView().environmentObject(m) }
         .sheet(isPresented: $m.showQuickFiling) { QuickFilingView().environmentObject(m) }
+        .sheet(isPresented: $m.showMP3Tags) { MP3TagReviewView().environmentObject(m) }
         .sheet(isPresented: $m.showHistory) { HistoryView().environmentObject(m) }
         .sheet(isPresented: $m.showFolders) { FolderReviewView().environmentObject(m) }
         .sheet(isPresented: $m.showBatchNames) { BatchNamesView().environmentObject(m) }
@@ -923,7 +946,7 @@ struct FieldEditor: View {
             DisclosureGroup("How edits and filing work") {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("Row rename buttons and Return in the name editor rename files immediately in the workspace. Component confirmation here is separate and is used for filing. Successful direct renames are deselected.")
-                    Text("Filename components come from filenames; Magic may also use folder names and remembered corrections. MP3 tags are read-only reference information. Video metadata can fill missing components used by masks. No tags are changed.")
+                    Text("Filename components come from filenames; Magic may also use folder names and remembered corrections. MP3 tags are read-only reference information. Video metadata can fill missing components used by masks. Tags change only through explicit MP3 Tools actions.")
                     Text("Only successful, user-approved operations supply learning examples. Remembering allows Magic to reuse them in this profile; it never changes rules automatically.")
                     Text("Edits apply to selected visible files. Mixed filename components stay unchanged unless you type a replacement. Shared author/book filename components define an audiobook group.")
                 }.font(.system(size: 12)).foregroundStyle(.secondary)
@@ -1009,7 +1032,7 @@ struct HistoryView: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text("Operation History & Recovery").font(.title2.bold())
-            Text("Interrupted operations are never resumed or deleted automatically. Inspect the recorded source, destination, and temporary paths. Re-preview retained source files. Cross-volume move undo requires a new reviewed operation.").font(.callout)
+            Text("History and its Undo actions expire after 30 days. Remembered Magic corrections are retained separately. Source, destination and temporary files are never deleted by history cleanup. Interrupted operations are never resumed or deleted automatically. Inspect the recorded source, destination, and temporary paths. Re-preview retained source files. Cross-volume move undo requires a new reviewed operation.").font(.callout)
             if !m.folderEvents.isEmpty {
                 DisclosureGroup("Folder rename history (\(m.folderEvents.count) transitions)") {
                     ScrollView { VStack(alignment: .leading) { ForEach(m.folderEvents) { e in

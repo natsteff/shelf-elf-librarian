@@ -22,12 +22,14 @@ public struct EmbeddedMetadata: Equatable {
         guard !tag.binary, let key = tag.component else { return "Additional tag information" }
         let current = FieldCatalog.get(key, fields)
         guard !current.isEmpty else { return "Additional tag information" }
+        if key == "Genre", tag.source == "ID3v1" { return ID3Genres.normalized(current).caseInsensitiveCompare(ID3Genres.normalized(tag.value)) == .orderedSame ? "Matches component" : "Differs from component" }
         return Self.comparable(current, key: key) == Self.comparable(tag.value, key: key) ? "Matches component" : "Differs from component"
     }
     private static func comparable(_ input: String, key: String) -> String {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
         // Padding/track totals are layout differences. Spelling, punctuation and case remain visible differences.
         if ["TrackNumber", "Season", "Episode"].contains(key), let number = Int(text.components(separatedBy: "/")[0]) { return String(number) }
+        if key == "Genre" { return ID3Genres.normalized(text) }
         if key == "Year", text.count >= 4, Int(text.prefix(4)) != nil { return String(text.prefix(4)) }
         return text
     }

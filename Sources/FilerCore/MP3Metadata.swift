@@ -35,7 +35,7 @@ public enum MP3Metadata {
                         if !value.isEmpty { result.tags.append(.init(key: label, label: label, value: value, component: key.isEmpty ? nil : key, source: "ID3v1")) }
                     }
                     if v1[125] == 0, v1[126] != 0 { result.tags.append(.init(key: "Track", label: "Track", value: String(v1[126]), component: "TrackNumber", source: "ID3v1.1")) }
-                    if v1[127] != 255 { result.tags.append(.init(key: "Genre", label: "Genre code", value: String(v1[127]), source: "ID3v1")) }
+                    if v1[127] != 255 { result.tags.append(.init(key: "Genre", label: "Genre (code \(v1[127]))", value: ID3Genres.name(v1[127]), component: "Genre", source: "ID3v1")) }
                 }
             }
             // APEv2 can coexist with ID3. Retain every discovered item, including binary item descriptions.

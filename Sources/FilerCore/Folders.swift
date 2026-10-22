@@ -128,6 +128,7 @@ public final class FolderExecutor {
         try journal.recordFolder(FolderEvent(operation: event.operation, row: event.row, state: "Recovered original folder"))
     }
     public func undo(_ event: FolderEvent) throws {
+        guard event.date >= Date().addingTimeInterval(-30 * 24 * 60 * 60) else { throw fail("This operation’s 30-day Undo period has expired.") }
         guard event.state == "Renamed folder" else { throw fail("Folder event cannot be undone automatically.") }
         guard !(try journal.folderEvents()).contains(where: { $0.operation == event.operation && $0.row.id == event.row.id && $0.state == "Undone folder" }) else { throw fail("Folder rename was already undone.") }
         try exclusivePathRename(source: URL(fileURLWithPath: event.row.destination), destination: URL(fileURLWithPath: event.row.source), verify: { try self.verify($0, row: event.row) }, record: { state, temp in
