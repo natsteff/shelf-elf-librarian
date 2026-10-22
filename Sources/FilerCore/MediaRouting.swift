@@ -82,11 +82,13 @@ public enum MediaRouting {
             }
         }
         if let id = profile.defaultMediaCategoryID, let category = categories.first(where: { $0.id == id }) { return (category, "Media Category: \(category.name) — profile default; no matching rule.") }
+        if profile.unmatchedMediaUseLibraryRoot == true && profile.defaultMediaCategoryID == nil { return (nil, "No Media Category matched — use Library Root with the file’s Type/fallback layout.") }
         return (nil, "No Media Category matched. Select one or configure a default before filing.")
     }
     public static func context(fields: Fields, source: URL, profile: Profile, requireDestination: Bool = false) throws -> MediaRoutingContext {
         let (category, reason) = resolve(fields: fields, source: source, profile: profile)
-        if enabled(profile) && requireDestination && category == nil { throw fail(reason) }
+        let rootFallback = enabled(profile) && category == nil && fields.mediaCategory.isEmpty && profile.defaultMediaCategoryID == nil && profile.unmatchedMediaUseLibraryRoot == true
+        if enabled(profile) && requireDestination && category == nil && !rootFallback { throw fail(reason) }
         var effective = fields
         var folder = ""
         if let category {
@@ -114,13 +116,14 @@ public enum MediaRouting {
             if let folder = category.rootFolder, !folder.isEmpty { try component(folder) }
             if let mask = category.folderMask { try PatternEngine.validateMask(mask, folder: true) }
             if let mask = category.filenameMask { try PatternEngine.validateMask(mask, folder: false) }
-            if enabled(profile), category.enabled, !category.associatedType.isEmpty, PatternEngine.lookup(category.associatedType, profile: profile) == nil { throw fail("Media Category “\(category.name)” refers to unknown Type “\(category.associatedType)”. Choose a configured Type or inherit the file’s Type.") }
+            if enabled(profile), category.enabled, !category.associatedType.isEmpty, PatternEngine.lookup(category.associatedType, profile: profile) == nil { throw fail("Media Category “\(category.name)” uses an unavailable naming layout (“\(category.associatedType)”). Open its Advanced settings and choose a Layout Type, or select Use the file’s Type.") }
             for rule in category.rules {
-                if enabled(profile), category.enabled, !rule.type.isEmpty, PatternEngine.lookup(rule.type, profile: profile) == nil { throw fail("Media Category “\(category.name)” has a rule for unknown Type “\(rule.type)”. Update the rule or add that Type.") }
+                if enabled(profile), category.enabled, !rule.type.isEmpty, PatternEngine.lookup(rule.type, profile: profile) == nil { throw fail("Media Category “\(category.name)” has a matching rule for an unavailable Type (“\(rule.type)”). Open its Advanced settings to choose another Type or remove that rule.") }
                 guard ruleIDs.insert(rule.id).inserted else { throw fail("Media Category rule identifiers must be unique.") }
                 guard rule.keyword.count <= 500 else { throw fail("Use a keyword or phrase of at most 500 characters.") }
             }
         }
+        if enabled(profile), profile.unmatchedMediaUseLibraryRoot == true, profile.defaultMediaCategoryID != nil { throw fail("Choose one unmatched-video option: a default category or Use Library Root.") }
         if enabled(profile), let id = profile.defaultMediaCategoryID {
             guard categories.contains(where: { $0.id == id && $0.enabled }) else { throw fail("Choose an enabled default Media Category or select Needs review.") }
         }

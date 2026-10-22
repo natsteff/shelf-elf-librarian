@@ -19,7 +19,7 @@ struct MediaCategorySettings: View {
     }
     private var categories: Binding<[MediaCategory]> { Binding(get: { profile.mediaCategories ?? [] }, set: { profile.mediaCategories = $0 }) }
     private var defaultChoice: Binding<String> {
-        Binding(get: { profile.defaultMediaCategoryID?.uuidString ?? "" }, set: { profile.defaultMediaCategoryID = UUID(uuidString: $0) })
+        Binding(get: { profile.unmatchedMediaUseLibraryRoot == true ? "@root" : (profile.defaultMediaCategoryID?.uuidString ?? "") }, set: { value in profile.unmatchedMediaUseLibraryRoot = value == "@root"; profile.defaultMediaCategoryID = UUID(uuidString: value) })
     }
     var body: some View {
         Toggle("Sort videos into Media Category folders", isOn: Binding(get: { profile.mediaRoutingEnabled ?? false }, set: { profile.mediaRoutingEnabled = $0 }))
@@ -56,6 +56,7 @@ struct MediaCategorySettings: View {
             Text("Needs review").tag("")
             if let id = profile.defaultMediaCategoryID, !(profile.mediaCategories ?? []).contains(where: { $0.id == id && $0.enabled }) { Text("Unavailable default — choose another").tag(id.uuidString) }
             ForEach((profile.mediaCategories ?? []).filter(\.enabled)) { category in Text("Use “" + category.name + "”").tag(category.id.uuidString) }
+            Text("Use Library Root").tag("@root")
         }
         SettingsHint(text: "Starter categories already include recognition and naming defaults. Use Advanced only to customize them. Removing a category never deletes library folders or files.")
             .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
@@ -92,7 +93,7 @@ struct MediaCategorySettings: View {
                 TextField("Aliases (comma separated)", text: $category.aliases)
                 Picker("Layout Type", selection: $category.associatedType) {
                     Text("Use the file’s Type").tag("")
-                    if !category.associatedType.isEmpty && !(profile.classifications ?? []).contains(where: { $0.name == category.associatedType }) { Text(category.associatedType + " (unconfigured)").tag(category.associatedType) }
+                    if !category.associatedType.isEmpty && !(profile.classifications ?? []).contains(where: { $0.name == category.associatedType }) { Text(category.associatedType + (PatternEngine.lookup(category.associatedType, profile: profile) == nil ? " (unconfigured)" : " (alias)")).tag(category.associatedType) }
                     ForEach(profile.classifications ?? []) { type in Text(type.name).tag(type.name) }
                 }
                 SettingsHint(text: "This Type selects the layout for files routed here. It does not identify the category by itself; add matching rules below.")
@@ -107,7 +108,7 @@ struct MediaCategorySettings: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Picker("Type condition", selection: $rule.type) {
                             Text("Any Type").tag("")
-                            if !rule.type.isEmpty && !(profile.classifications ?? []).contains(where: { $0.name == rule.type }) { Text(rule.type + " (unconfigured)").tag(rule.type) }
+                            if !rule.type.isEmpty && !(profile.classifications ?? []).contains(where: { $0.name == rule.type }) { Text(rule.type + (PatternEngine.lookup(rule.type, profile: profile) == nil ? " (unconfigured)" : " (alias)")).tag(rule.type) }
                             ForEach(profile.classifications ?? []) { type in Text(type.name).tag(type.name) }
                         }
                         TextField("Filename keyword or phrase (optional)", text: $rule.keyword)
@@ -187,6 +188,9 @@ private struct CategoryFolderEditor: View {
     }
     private func browse() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = false
+        panel.title = "Select destination folder for " + category.name
+        panel.message = "Select the library destination for “" + category.name + "”. Choose the library root or one of its direct child folders."
+        panel.prompt = "Use for " + category.name
         panel.directoryURL = URL(fileURLWithPath: libraryRoot)
         WindowPresentation.choose(panel) { response in
             guard response == .OK, let url = panel.url else { return }

@@ -712,6 +712,88 @@ final class FilerCoreTests {
         let f = try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Old"}"#.utf8))
         XCTAssertEqual(f.type, ""); XCTAssertEqual(f.system, ""); XCTAssertEqual(f.custom, nil)
     }
+    func testVideoCategoryCompatibilityAndPersistence() throws {
+        var legacy = ProfileSetup.configured(.video, name: "Existing Videos")
+        legacy.root = library.path; legacy.mediaRoutingEnabled = true; legacy.classifications = []
+        legacy.mediaCategories![1].rootFolder = "Nonfiction"
+        legacy.mediaCategories![3].rootFolder = "My Films"
+        legacy.mediaCategories![5].rootFolder = "Television"
+        legacy.defaultMediaCategoryID = legacy.mediaCategories![3].id
+        let repaired = ProfileSetup.addingMissingVideoTypes(legacy)
+        try repaired.validate()
+        XCTAssertEqual(repaired.mediaCategories, legacy.mediaCategories)
+        XCTAssertEqual(repaired.defaultMediaCategoryID, legacy.defaultMediaCategoryID)
+        XCTAssertEqual(repaired.workspacePatterns, legacy.workspacePatterns)
+        XCTAssertEqual(repaired.folderMask, legacy.folderMask)
+        XCTAssertEqual(repaired.filenameMask, legacy.filenameMask)
+        XCTAssertEqual(repaired.id, legacy.id)
+        XCTAssertEqual(ProfileSetup.addingMissingVideoTypes(repaired), repaired)
+        XCTAssertTrue(PatternEngine.lookup("Commercial", profile: repaired) != nil)
+        XCTAssertEqual(PatternEngine.lookup("Commercial", profile: repaired)?.folderMask, nil)
+        let file = base.appendingPathComponent("Saved profiles.json")
+        try ProfileSettingsStore.write([repaired], to: file)
+        let reopened = try ProfileSettingsStore.read(from: file)
+        XCTAssertEqual(reopened, [repaired])
+        XCTAssertEqual(try ProfileSettingsStore.read(from: file)[0].mediaCategories?[3].rootFolder, "My Films")
+        var edited = reopened[0]; edited.mediaCategories![3].rootFolder = "Films - Updated"
+        try ProfileSettingsStore.write([edited], to: file)
+        XCTAssertEqual(try ProfileSettingsStore.read(from: file)[0].mediaCategories?[3].rootFolder, "Films - Updated")
+        let before = try Data(contentsOf: file)
+        let blocked = base.appendingPathComponent("Blocked Save.json")
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: blocked.appendingPathComponent("sentinel"))
+        XCTAssertThrowsError(try ProfileSettingsStore.write([legacy], to: blocked))
+        XCTAssertEqual(try Data(contentsOf: file), before)
+        XCTAssertEqual(try Data(contentsOf: blocked.appendingPathComponent("sentinel")), Data("keep".utf8))
+        let bad = base.appendingPathComponent("Unreadable format.json"); try Data("broken JSON".utf8).write(to: bad)
+        XCTAssertThrowsError(try ProfileSettingsStore.read(from: bad))
+        XCTAssertEqual(try Data(contentsOf: bad), Data("broken JSON".utf8))
+        var custom = legacy
+        let films = FilingType("Films", aliases: "Movies", folderMask: "Special/{Title}", filenameMask: "Custom - {Title}")
+        custom.classifications = [films]
+        let compatible = ProfileSetup.addingMissingVideoTypes(custom)
+        try compatible.validate()
+        XCTAssertEqual(PatternEngine.lookup("Movie", profile: compatible)?.id, films.id)
+        XCTAssertEqual(PatternEngine.lookup("Movie", profile: compatible)?.folderMask, films.folderMask)
+        XCTAssertEqual(PatternEngine.lookup("Movie", profile: compatible)?.filenameMask, films.filenameMask)
+        var renamed = repaired
+        let movieIndex = renamed.classifications!.firstIndex { $0.name == "Movie" }!
+        renamed.classifications![movieIndex].name = "Personal Layout"; renamed.classifications![movieIndex].aliases = ""
+        let renamedRepair = ProfileSetup.addingMissingVideoTypes(renamed)
+        try renamedRepair.validate()
+        XCTAssertTrue(PatternEngine.lookup("Personal Layout", profile: renamedRepair) != nil)
+        XCTAssertTrue(PatternEngine.lookup("Movie", profile: renamedRepair)?.id != renamed.classifications![movieIndex].id)
+        let archive = SettingsArchive(profiles: [legacy], general: .suggestedDefaults, activeProfileID: legacy.id)
+        XCTAssertEqual(try archive.validatedProfiles()[0].mediaCategories, legacy.mediaCategories)
+    }
+    func testUnmatchedVideoLibraryRoot() throws {
+        var profile = ProfileSetup.configured(.video, name: "Videos")
+        profile.root = library.path; profile.mediaRoutingEnabled = true; profile.mediaCategories = []
+        profile.folderMask = "{Title}"; profile.filenameMask = "{Title}"
+        let url = src.appendingPathComponent("Unknown.mp4"); try Data("bytes".utf8).write(to: url)
+        var fields = Fields(); fields.title = "Unmatched"
+        let item = Item(url: url, size: 5, fields: fields, evidence: "", reviewed: false)
+        XCTAssertFalse(try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .copy, keepCurrentNames: true).rows[0].actionable)
+        profile.unmatchedMediaUseLibraryRoot = true
+        let plan = try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .copy, keepCurrentNames: true)
+        XCTAssertTrue(plan.rows[0].actionable)
+        XCTAssertEqual(plan.rows[0].destination, library.appendingPathComponent("Unmatched/Unknown.mp4").path)
+        XCTAssertTrue(plan.rows[0].explanation.contains("use Library Root"))
+        let saved = base.appendingPathComponent("Root fallback.json")
+        try ProfileSettingsStore.write([profile], to: saved)
+        XCTAssertEqual(try ProfileSettingsStore.read(from: saved)[0].unmatchedMediaUseLibraryRoot, true)
+        XCTAssertEqual(try executor().execute(plan).completed, 1)
+        var unknown = item; unknown.fields.mediaCategory = "Unknown Category"
+        XCTAssertFalse(try makeConfirmedFilingPlan(items: [unknown], profile: profile, mode: .copy, keepCurrentNames: true).rows[0].actionable)
+        var category = MediaCategory("Chosen", type: "Movie", folderMask: "", filenameMask: "{Title}", rules: [.init(keyword: "Unknown")])
+        profile.mediaCategories = [category]
+        XCTAssertFalse(try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .copy, keepCurrentNames: true).rows[0].actionable) // matched but unmapped cannot fall back
+        category.enabled = false; profile.mediaCategories = [category]
+        unknown.fields.mediaCategory = "Chosen"
+        XCTAssertFalse(try makeConfirmedFilingPlan(items: [unknown], profile: profile, mode: .copy, keepCurrentNames: true).rows[0].actionable)
+        profile.defaultMediaCategoryID = category.id
+        XCTAssertThrowsError(try profile.validate())
+    }
     func testMixedMediaCategoryFiling() throws {
         var profile = ProfileSetup.configured(.video, name: "Mixed Videos")
         profile.root = library.path; profile.mediaRoutingEnabled = true
@@ -1075,4 +1157,6 @@ do { try suite.setUpWithError(); try suite.testConfirmedFilingPaths(); try suite
 do { try suite.setUpWithError(); try suite.testMixedMediaCategoryFiling(); try suite.tearDownWithError(); print("Checked mixed-category filing to mapped folders") } catch { failures += 1; print("FAIL testMixedMediaCategoryFiling: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testMediaCategoryPriorityAndCapture(); try suite.tearDownWithError(); print("Checked category priorities, aliases, captures, defaults and disabled references") } catch { failures += 1; print("FAIL testMediaCategoryPriorityAndCapture: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testMediaCategorySafetyAndArchives(); try suite.tearDownWithError(); print("Checked category guards, collisions, archives and legacy settings") } catch { failures += 1; print("FAIL testMediaCategorySafetyAndArchives: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 55 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testVideoCategoryCompatibilityAndPersistence(); try suite.tearDownWithError(); print("Checked video compatibility repair, persisted mappings and failed-write propagation") } catch { failures += 1; print("FAIL testVideoCategoryCompatibilityAndPersistence: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testUnmatchedVideoLibraryRoot(); try suite.tearDownWithError(); print("Checked unmatched Library Root fallback and explicit-category guards") } catch { failures += 1; print("FAIL testUnmatchedVideoLibraryRoot: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 57 fixture scenarios"); exit(failures == 0 ? 0 : 1)

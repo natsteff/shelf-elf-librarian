@@ -51,6 +51,35 @@ public enum ProfileSetup {
         }
         return p
     }
+    /// Older/custom profiles may lack built-in naming Types required by starter categories.
+    /// Supply definitions only: preserve all existing names, aliases, layouts, patterns and mappings.
+    public static func addingMissingVideoTypes(_ input: Profile) -> Profile {
+        guard MediaRouting.enabled(input) else { return input }
+        var profile = input
+        let referenced = Set((profile.mediaCategories ?? []).flatMap { [$0.associatedType] + $0.rules.map(\.type) } + (profile.workspacePatterns ?? []).map(\.assignedType))
+        let standards = PatternEngine.defaultTypes(for: .video)
+        for (index, standard) in standards.enumerated() {
+            let requested = referenced.filter { value in
+                !value.isEmpty && ([standard.name] + UniversalPreferences.entries(standard.aliases)).contains { $0.caseInsensitiveCompare(value) == .orderedSame }
+            }.sorted()
+            for name in requested where PatternEngine.lookup(name, profile: profile) == nil {
+                var definitions = profile.classifications ?? []
+                if let equivalent = ([standard.name] + UniversalPreferences.entries(standard.aliases)).compactMap({ PatternEngine.lookup($0, profile: profile) }).first,
+                   let i = definitions.firstIndex(where: { $0.id == equivalent.id }) {
+                    definitions[i].aliases = (UniversalPreferences.entries(definitions[i].aliases) + [name]).joined(separator: ", ")
+                } else {
+                    var definition = standard
+                    var seed = 10000 + index
+                    while definitions.contains(where: { $0.id == migrationID(profile.id, seed) }) { seed += 10000 }
+                    definition.id = migrationID(profile.id, seed)
+                    definition.folderMask = nil; definition.filenameMask = nil
+                    definitions.append(definition)
+                }
+                profile.classifications = definitions
+            }
+        }
+        return profile
+    }
     public static var starterProfiles: [Profile] {
         var video = configured(.video, name: "Video Media Server")
         var rules = video.rules; rules.episodeCapitalization = .lowercase; rules.formatEpisodes = true; video.rules = rules
@@ -111,7 +140,7 @@ public struct SettingsArchive: Codable {
         try general.validate()
         guard Set(profiles.map(\.id)).count == profiles.count else { throw fail("Archive contains repeated profile identifiers.") }
         return try profiles.map { profile in
-            let migrated = try ProfileSetup.migrate(profile)
+            let migrated = ProfileSetup.addingMissingVideoTypes(try ProfileSetup.migrate(profile))
             // Imported destinations can be offline; normal preview/application guards still validate them.
             var check = migrated; check.root = ""; try check.validate()
             return migrated

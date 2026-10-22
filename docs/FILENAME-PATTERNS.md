@@ -122,3 +122,13 @@ Description / Notes uses the normal system field font. Its height is measured fr
 The main category list shows category names and mapped library folders, with Choose/Change, Advanced and Remove actions. Choose/Change opens a small folder form: enter a direct-child folder name or browse an existing folder, then Use Folder. Browse cannot create folders; typed new names are created only by a subsequent filing operation. Clear Mapping and explicit Use library root remain available there.
 
 Add Category asks for a name, a starter naming layout and an optional filename keyword. It does not duplicate broad matching rules from the chosen layout. Without a keyword, use explicit category selection/capture or choose the category as the unmatched-video default. Existing matching rules, aliases, masks and ordering are preserved and edited through each row’s Advanced window. Capture-pattern setup and adding missing starters are under Advanced Setup.
+
+### Mapping dialog, unmatched root and persistence
+
+The category-folder browser identifies its purpose in its title, visible message and confirmation button: Select destination folder for CATEGORY / Use for CATEGORY.
+
+Unmatched videos has a final Use Library Root option. It bypasses only category-folder selection, applying the file’s Type/fallback layout beneath the library root. It does not rescue an unknown/disabled explicit category or a matched category with no mapped folder. The fallback choice is persisted separately from a default-category identifier.
+
+Older enabled video profiles are supplied missing built-in Type definitions required by their category rules. Existing custom Type names, layouts, patterns and category mappings are retained. Equivalent aliases are reused, and the repair is idempotent. Unknown custom layouts still require an explicit correction in Advanced.
+
+Profile Save writes atomically before publishing model changes or dismissing settings. Validation and write failures say Profile not saved, keep the draft open and reveal the error. Existing unreadable/corrupt settings are not silently replaced with starters during startup. Fixtures exercise successful write/reload, failed writes, retained prior data and compatibility repair. Choices from a previous failed Save were never persisted and must be selected again.

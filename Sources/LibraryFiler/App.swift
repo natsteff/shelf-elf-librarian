@@ -218,8 +218,9 @@ struct WorkspaceSession: Codable {
         HoverHelp.shared.timing = universalPreferences.hoverTiming ?? .immediate
         do {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-            if let data = try? Data(contentsOf: support.appendingPathComponent("profiles.json")) { profiles = try JSONDecoder().decode([Profile].self, from: data) }
-            else { profiles = ProfileSetup.starterProfiles; try JSONEncoder().encode(profiles).write(to: support.appendingPathComponent("profiles.json"), options: .atomic) }
+            let profilesURL = support.appendingPathComponent("profiles.json")
+            if FileManager.default.fileExists(atPath: profilesURL.path) { profiles = try ProfileSettingsStore.read(from: profilesURL) }
+            else { profiles = ProfileSetup.starterProfiles; try ProfileSettingsStore.write(profiles, to: profilesURL) }
             if profiles.contains(where: { $0.schemaVersion < 2 }) {
                 let backup = support.appendingPathComponent("Settings before pattern migration-\(UUID().uuidString).json")
                 try JSONEncoder().encode(SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: nil)).write(to: backup, options: .atomic)
@@ -227,9 +228,9 @@ struct WorkspaceSession: Codable {
                 try JSONEncoder().encode(migrated).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
                 profiles = migrated
             }
-            let described = profiles.map { StarterDescriptions.fillingBlankNotes(ProfileSetup.updatingVideoDefaults($0)) }
+            let described = profiles.map { StarterDescriptions.fillingBlankNotes(ProfileSetup.addingMissingVideoTypes(ProfileSetup.updatingVideoDefaults($0))) }
             if described != profiles {
-                if profiles.map({ ProfileSetup.updatingVideoDefaults($0) }) != profiles {
+                if profiles.map({ ProfileSetup.addingMissingVideoTypes(ProfileSetup.updatingVideoDefaults($0)) }) != profiles {
                     let backup = support.appendingPathComponent("Settings before video defaults update-\(UUID().uuidString).json")
                     try JSONEncoder().encode(SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: nil)).write(to: backup, options: .atomic)
                 }
@@ -247,9 +248,14 @@ struct WorkspaceSession: Codable {
     func invalidate() { HoverHelp.shared.hide(); plan = nil; folderPlan = nil; categoryConfirmed = false; showReview = false; showFolders = false }
     func changeProfile() { selected = []; items = []; invalidate(); AppEnvironment.defaults.set(activeID.uuidString, forKey: "lastProfile"); loadCategories(); if profiles.isEmpty { excluded = []; status = "No library profiles. Open Settings to create one." } else if workspace != nil { refresh() } }
     func loadCategories() { availableCategories = []; category = "" }
-    func saveProfile(_ p: Profile) {
-        do { guard !busy else { throw fail("Wait for the running operation before changing profile settings.") }; try p.validate(); var next = profiles; if let i = next.firstIndex(where: { $0.id == p.id }) { next[i] = p } else { next.append(p) }; try JSONEncoder().encode(next).write(to: support.appendingPathComponent("profiles.json"), options: .atomic); profiles = next; activeID = p.id; changeProfile(); showSettings = false }
-        catch { self.error = error.localizedDescription }
+    func saveProfile(_ input: Profile) throws {
+        guard !busy else { throw fail("Wait for the running operation before changing profile settings.") }
+        let p = ProfileSetup.addingMissingVideoTypes(input)
+        try p.validate()
+        var next = profiles
+        if let i = next.firstIndex(where: { $0.id == p.id }) { next[i] = p } else { next.append(p) }
+        try ProfileSettingsStore.write(next, to: support.appendingPathComponent("profiles.json"))
+        profiles = next; activeID = p.id; changeProfile(); showSettings = false
     }
     func deleteProfile(_ id: UUID) throws {
         guard !busy else { throw fail("Wait for the current operation to finish before deleting a profile.") }
@@ -870,14 +876,14 @@ struct SettingsView: View {
     @State private var showPatterns = false
     @Environment(\.dismiss) var dismiss
     @State var draft: Profile
-    let save: (Profile) -> Void
+    let save: (Profile) throws -> Void
     let delete: (UUID) throws -> Void
     let savedProfileID: UUID?
     let savedProfileName: String
     @State var confirmDelete = false
     @State var validation = ""
     @State private var validationScrollRequest = 0
-    init(profile: Profile, existing: Bool, save: @escaping (Profile) -> Void, delete: @escaping (UUID) throws -> Void) {
+    init(profile: Profile, existing: Bool, save: @escaping (Profile) throws -> Void, delete: @escaping (UUID) throws -> Void) {
         _draft = State(initialValue: profile); self.save = save; self.delete = delete
         savedProfileID = existing ? profile.id : nil; savedProfileName = profile.name
     }
@@ -900,7 +906,7 @@ struct SettingsView: View {
                     Text("Removes settings only. Library files stay untouched.").font(.caption).foregroundStyle(.secondary)
                 }.padding(.bottom, 6)
             }
-            HStack { Button("Duplicate as New Profile") { draft.id = UUID(); draft.name += " Copy" }; Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save") { do { draft.rootAllowed = true; draft.exceptions = ""; try draft.validate(); save(draft); dismiss() } catch { validation = error.localizedDescription; validationScrollRequest += 1; DispatchQueue.main.async { withAnimation { scroll.scrollTo("profileValidation", anchor: .bottom) } } } }.keyboardShortcut(.defaultAction) }
+            HStack { Button("Duplicate as New Profile") { draft.id = UUID(); draft.name += " Copy" }; Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save") { do { draft.rootAllowed = true; draft.exceptions = ""; draft = ProfileSetup.addingMissingVideoTypes(draft); try draft.validate(); try save(draft); dismiss() } catch { validation = "Profile not saved. " + error.localizedDescription; validationScrollRequest += 1; DispatchQueue.main.async { withAnimation { scroll.scrollTo("profileValidation", anchor: .bottom) } } } }.keyboardShortcut(.defaultAction) }
             }.padding(.top, 2).padding(.bottom, 4)
         }.padding()
         }
