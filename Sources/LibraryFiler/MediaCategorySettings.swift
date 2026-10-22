@@ -6,27 +6,90 @@ struct MediaCategorySettings: View {
     @Binding var profile: Profile
     @Binding var validation: String
     @State private var removal: UUID?
+    @State private var editor: Editor?
+    private enum Editor: Identifiable {
+        case folder(UUID), advanced(UUID), add
+        var id: String {
+            switch self {
+            case .folder(let id): return "folder-" + id.uuidString
+            case .advanced(let id): return "advanced-" + id.uuidString
+            case .add: return "add"
+            }
+        }
+    }
     private var categories: Binding<[MediaCategory]> { Binding(get: { profile.mediaCategories ?? [] }, set: { profile.mediaCategories = $0 }) }
     private var defaultChoice: Binding<String> {
         Binding(get: { profile.defaultMediaCategoryID?.uuidString ?? "" }, set: { profile.defaultMediaCategoryID = UUID(uuidString: $0) })
     }
     var body: some View {
-        Toggle("Route videos using Media Categories", isOn: Binding(get: { profile.mediaRoutingEnabled ?? false }, set: { profile.mediaRoutingEnabled = $0 }))
-        SettingsHint(text: "Type describes the video’s structure. Media Category maps it to your actual library folder, such as Films, Kid Movies or Television. Folder names are never inferred from existing directories. When off, the original Type/profile masks remain in use.")
-        if profile.mediaRoutingEnabled == true {
-            Picker("When no rule matches", selection: defaultChoice) {
-                Text("Needs review — no default").tag("")
-                if let id = profile.defaultMediaCategoryID, !(profile.mediaCategories ?? []).contains(where: { $0.id == id && $0.enabled }) { Text("Unavailable default — choose another or Needs review").tag(id.uuidString) }
-                ForEach((profile.mediaCategories ?? []).filter(\.enabled)) { category in Text("Use “" + category.name + "”").tag(category.id.uuidString) }
-            }
-            SettingsHint(text: "An explicit selection or captured {MediaCategory} wins. Type + keyword rules run first, then keyword-only, then Type-only. Category and rule order break ties. Unmapped categories always require review, including the default.")
+        Toggle("Sort videos into Media Category folders", isOn: Binding(get: { profile.mediaRoutingEnabled ?? false }, set: { profile.mediaRoutingEnabled = $0 }))
+        SettingsHint(text: "Choose the library folder for each category. Existing folders are reused; missing folders are created only when a filing operation is applied.")
+        HStack {
+            Text("Media Category").frame(width: 125, alignment: .leading)
+            Text("Library folder").frame(maxWidth: .infinity, alignment: .leading)
+            Spacer().frame(width: 210)
+        }.font(.caption).foregroundStyle(.secondary)
+        ForEach(profile.mediaCategories ?? []) { category in
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(category.name.isEmpty ? "Unnamed Category" : category.name).lineLimit(2)
+                    if !category.enabled { Text("Off").font(.caption).foregroundStyle(.secondary) }
+                }.frame(width: 125, alignment: .leading)
+                Text(category.rootFolder.map { $0.isEmpty ? "Library root" : $0 } ?? "Not chosen")
+                    .lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundStyle(category.rootFolder == nil ? Color.secondary : Color.primary)
+                    .instantHelp(category.rootFolder.map { $0.isEmpty ? profile.root : URL(fileURLWithPath: profile.root).appendingPathComponent($0).path } ?? "Choose a destination folder for this category")
+                Button(category.rootFolder == nil ? "Choose…" : "Change…") { editor = .folder(category.id) }.fixedSize()
+                Button("Advanced…") { editor = .advanced(category.id) }.fixedSize()
+                Button("Remove…") { removal = category.id }.fixedSize()
+            }.controlSize(.small).padding(.vertical, 3)
         }
-        ForEach(categories) { $category in
-            DisclosureGroup {
+        HStack {
+            Button("Add Category…") { editor = .add }
+            Spacer()
+            Menu("Advanced Setup") {
+                Button("Add Missing Starter Categories") { addMissingStarters() }
+                Button("Add {MediaCategory} Input Patterns") { addCapturePatterns() }
+            }.fixedSize()
+        }
+        Picker("Unmatched videos", selection: defaultChoice) {
+            Text("Needs review").tag("")
+            if let id = profile.defaultMediaCategoryID, !(profile.mediaCategories ?? []).contains(where: { $0.id == id && $0.enabled }) { Text("Unavailable default — choose another").tag(id.uuidString) }
+            ForEach((profile.mediaCategories ?? []).filter(\.enabled)) { category in Text("Use “" + category.name + "”").tag(category.id.uuidString) }
+        }
+        SettingsHint(text: "Starter categories already include recognition and naming defaults. Use Advanced only to customize them. Removing a category never deletes library folders or files.")
+            .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
+            .sheet(item: $editor) { selection in
+                switch selection {
+                case .folder(let id):
+                    if let i = profile.mediaCategories?.firstIndex(where: { $0.id == id }) { CategoryFolderEditor(category: categories[i], libraryRoot: profile.root) }
+                case .advanced(let id):
+                    if let i = profile.mediaCategories?.firstIndex(where: { $0.id == id }) { advancedEditor(categories[i]) }
+                case .add:
+                    AddMediaCategoryView(existing: profile.mediaCategories ?? []) { category in categories.wrappedValue.append(category) }
+                }
+            }
+            .alert("Remove this Media Category?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } })) {
+                Button("Remove Category", role: .destructive) {
+                    if let id = removal {
+                        categories.wrappedValue.removeAll { $0.id == id }
+                        if profile.defaultMediaCategoryID == id { profile.defaultMediaCategoryID = nil }
+                    }
+                    removal = nil
+                }
+                Button("Cancel", role: .cancel) { removal = nil }
+            } message: { Text("Only its settings are removed. Library folders and files are untouched.") }
+    }
+    private func advancedEditor(_ binding: Binding<MediaCategory>) -> some View {
+        @Binding var category: MediaCategory
+        _category = binding
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(category.name + " — Advanced").font(.title2.bold())
+            Text("Recognition and layout details. Save the profile to keep changes.").font(.caption).foregroundStyle(.secondary)
+            Form {
                 Toggle("Category enabled", isOn: $category.enabled)
                 TextField("Category name", text: $category.name)
                 TextField("Aliases (comma separated)", text: $category.aliases)
-                destination($category)
                 Picker("Layout Type", selection: $category.associatedType) {
                     Text("Use the file’s Type").tag("")
                     if !category.associatedType.isEmpty && !(profile.classifications ?? []).contains(where: { $0.name == category.associatedType }) { Text(category.associatedType + " (unconfigured)").tag(category.associatedType) }
@@ -60,61 +123,17 @@ struct MediaCategorySettings: View {
                 HStack {
                     Button("Move Category Up") { moveCategory(category.id, -1) }
                     Button("Move Category Down") { moveCategory(category.id, 1) }
-                    Spacer()
-                    Button("Remove Category…", role: .destructive) { removal = category.id }
                 }
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(category.name.isEmpty ? "Unnamed Category" : category.name).fontWeight(.medium)
-                    Text((category.enabled ? "" : "Disabled • ") + (category.rootFolder.map { $0.isEmpty ? "Library root" : $0 } ?? "Destination not mapped")).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-        HStack {
-            Button("Add Media Category") { categories.wrappedValue.append(MediaCategory(uniqueName(), folderMask: "")) }
-            Button("Add Missing Starter Categories") {
-                let existing = profile.mediaCategories ?? []
-                categories.wrappedValue += MediaRouting.starters.filter { entry in !existing.contains { $0.name.caseInsensitiveCompare(entry.name) == .orderedSame } }
-            }
-        }
-        Button("Add explicit {MediaCategory} input patterns") { addCapturePatterns() }
-        SettingsHint(text: "Example input: {Title} ({Year}) [{MediaCategory}]. It reads the marker from the filename; your output mask can omit it. Renaming or removing a category never renames or deletes library folders/files. Multiple categories may share one folder. No folders are created until Apply.")
-        .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
-        .alert("Remove this Media Category?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } })) {
-            Button("Remove Category", role: .destructive) {
-                if let id = removal {
-                    categories.wrappedValue.removeAll { $0.id == id }
-                    if profile.defaultMediaCategoryID == id { profile.defaultMediaCategoryID = nil }
-                }
-                removal = nil
-            }
-            Button("Cancel", role: .cancel) { removal = nil }
-        } message: { Text("Only this profile’s configuration is removed. Library folders and files are untouched. Explicit references to this category will need review.") }
+            }.formStyle(.grouped).textFieldStyle(.roundedBorder)
+            Text("Explicit selection/capture wins. Type + keyword rules precede keyword-only, then Type-only rules; order breaks ties. Both conditions in a rule must match.").font(.caption).foregroundStyle(.secondary)
+            HStack { Spacer(); Button("Done") { editor = nil }.keyboardShortcut(.defaultAction) }
+        }.padding(20).frame(width: 650, height: 650)
     }
-    @ViewBuilder private func destination(_ category: Binding<MediaCategory>) -> some View {
-        TextField("Root-level folder name", text: Binding(get: { category.wrappedValue.rootFolder ?? "" }, set: { category.wrappedValue.rootFolder = $0.isEmpty ? nil : $0 }))
-        HStack {
-            Button("Choose Existing Folder…") {
-                guard !profile.root.isEmpty else { validation = "Choose the library Destination Root before mapping Media Categories."; return }
-                let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
-                panel.directoryURL = URL(fileURLWithPath: profile.root)
-                WindowPresentation.choose(panel) { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    let root = URL(fileURLWithPath: profile.root).standardizedFileURL
-                    if url.standardizedFileURL == root { category.wrappedValue.rootFolder = "" }
-                    else if url.deletingLastPathComponent().standardizedFileURL == root { category.wrappedValue.rootFolder = url.lastPathComponent }
-                    else { validation = "Choose the library root itself or one of its direct child folders. Category mappings must stay inside the library root." }
-                }
-            }.disabled(profile.root.isEmpty)
-            Button("Use Library Root") { category.wrappedValue.rootFolder = "" }
-            Button("Clear Mapping") { category.wrappedValue.rootFolder = nil }
-        }.controlSize(.small)
-        SettingsHint(text: "Choose an existing direct child folder or enter the root-level folder name to create on Apply. Use Library Root is an explicit mapping; blank/unmapped is not a fallback. Subfolder masks are applied beneath this folder.")
-    }
-    private func uniqueName() -> String {
-        var i = 1
-        while (profile.mediaCategories ?? []).contains(where: { $0.name.caseInsensitiveCompare("New Category \(i)") == .orderedSame }) { i += 1 }
-        return "New Category \(i)"
+    private func addMissingStarters() {
+        let occupied = Set((profile.mediaCategories ?? []).flatMap { [$0.name] + UniversalPreferences.entries($0.aliases) }.map { $0.lowercased() })
+        categories.wrappedValue += MediaRouting.starters.filter { entry in
+            Set(([entry.name] + UniversalPreferences.entries(entry.aliases)).map { $0.lowercased() }).isDisjoint(with: occupied)
+        }
     }
     private func moveCategory(_ id: UUID, _ offset: Int) {
         guard var list = profile.mediaCategories, let i = list.firstIndex(where: { $0.id == id }), list.indices.contains(i + offset) else { return }
@@ -130,5 +149,86 @@ struct MediaCategorySettings: View {
         let index = rules.firstIndex { $0.compatibility || $0.pattern == "{ParenthesizedYearAnywhere}" || $0.pattern == "{Title} [{Type}]" || $0.pattern == "{Title}" } ?? rules.count
         rules.insert(contentsOf: candidates.filter { candidate in !rules.contains { $0.pattern == candidate.pattern } }, at: index)
         profile.workspacePatterns = rules
+    }
+}
+
+private struct CategoryFolderEditor: View {
+    @Binding var category: MediaCategory
+    let libraryRoot: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var useRoot = false
+    @State private var error = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Folder for “" + category.name + "”").font(.title2.bold())
+            Text("Library: " + (libraryRoot.isEmpty ? "Choose a destination root in Profile Settings first" : libraryRoot)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+            TextField("Folder name", text: $name).textFieldStyle(.roundedBorder).disabled(useRoot)
+            HStack {
+                Button("Browse Existing Folders…") { browse() }.disabled(libraryRoot.isEmpty)
+                Toggle("Use library root itself", isOn: $useRoot)
+            }
+            Text("Enter the name of a folder directly inside your library, or browse to an existing one. New folders are created only when you apply a filing operation.").font(.caption).foregroundStyle(.secondary)
+            if !error.isEmpty { Text(error).foregroundStyle(.red) }
+            HStack {
+                Button("Clear Mapping") { category.rootFolder = nil; dismiss() }
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Use Folder") {
+                    do {
+                        let folder = useRoot ? "" : name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !useRoot { try component(folder) }
+                        category.rootFolder = folder; dismiss()
+                    } catch { self.error = error.localizedDescription }
+                }.keyboardShortcut(.defaultAction).disabled(!useRoot && name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.padding(20).frame(width: 560)
+            .onAppear { name = category.rootFolder ?? ""; useRoot = category.rootFolder == "" }
+    }
+    private func browse() {
+        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = false
+        panel.directoryURL = URL(fileURLWithPath: libraryRoot)
+        WindowPresentation.choose(panel) { response in
+            guard response == .OK, let url = panel.url else { return }
+            let root = URL(fileURLWithPath: libraryRoot).standardizedFileURL
+            if url.standardizedFileURL == root { useRoot = true; error = "" }
+            else if url.deletingLastPathComponent().standardizedFileURL == root { name = url.lastPathComponent; useRoot = false; error = "" }
+            else { error = "Choose the library root or one of its direct child folders." }
+        }
+    }
+}
+
+private struct AddMediaCategoryView: View {
+    let existing: [MediaCategory]
+    let add: (MediaCategory) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var layout = "Movies"
+    @State private var keyword = ""
+    @State private var error = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Add Media Category").font(.title2.bold())
+            TextField("Category name", text: $name).textFieldStyle(.roundedBorder)
+            Picker("Naming layout", selection: $layout) { ForEach(MediaRouting.starters) { Text($0.name).tag($0.name) } }
+            TextField("Match filenames containing (optional)", text: $keyword).textFieldStyle(.roundedBorder)
+            Text("Without a keyword, select this category for files yourself or use it as the unmatched-video default. You can customize recognition later in Advanced.").font(.caption).foregroundStyle(.secondary)
+            if !error.isEmpty { Text(error).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Add Category") {
+                    do {
+                        let title = name.trimmingCharacters(in: .whitespacesAndNewlines); try component(title)
+                        guard !title.hasPrefix("@"), !existing.contains(where: { ([$0.name] + UniversalPreferences.entries($0.aliases)).contains(where: { $0.caseInsensitiveCompare(title) == .orderedSame }) }) else { throw fail("Choose a unique category name.") }
+                        guard let template = MediaRouting.starters.first(where: { $0.name == layout }) else { return }
+                        var category = MediaCategory(title, type: template.associatedType, folderMask: template.folderMask, filenameMask: template.filenameMask)
+                        let word = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !word.isEmpty { category.rules = [MediaCategoryRule(keyword: word)] }
+                        add(category); dismiss()
+                    } catch { self.error = error.localizedDescription }
+                }.keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.padding(20).frame(width: 540)
     }
 }

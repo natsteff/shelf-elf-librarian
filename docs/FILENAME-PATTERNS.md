@@ -116,3 +116,9 @@ The optional `{MediaCategory}` component may be captured or included in output m
 Category inference is shared by ordinary proposals, manual Magic, confirmed filing and the keep-current-names bypass. A year alone is not category evidence beyond the profile’s configured input Type rules. Documentary/music/home/commercial starter keyword rules are editable filename evidence, not content inspection. No folders are created during discovery, classification, settings edits or preview. Existing collision, link, stale-source and executor guards remain in force. Category definitions, mapping choices and rules are included in settings export/import and learning signatures. Older settings decode with routing off.
 
 Description / Notes uses the normal system field font. Its height is measured from saved content and actual wrapping width on opening/reload, clamped to 100–300 points. Height stays stable while typing; longer text scrolls. There is no manual resize handle.
+
+### Simple category setup
+
+The main category list shows category names and mapped library folders, with Choose/Change, Advanced and Remove actions. Choose/Change opens a small folder form: enter a direct-child folder name or browse an existing folder, then Use Folder. Browse cannot create folders; typed new names are created only by a subsequent filing operation. Clear Mapping and explicit Use library root remain available there.
+
+Add Category asks for a name, a starter naming layout and an optional filename keyword. It does not duplicate broad matching rules from the chosen layout. Without a keyword, use explicit category selection/capture or choose the category as the unmatched-video default. Existing matching rules, aliases, masks and ordering are preserved and edited through each row’s Advanced window. Capture-pattern setup and adding missing starters are under Advanced Setup.
