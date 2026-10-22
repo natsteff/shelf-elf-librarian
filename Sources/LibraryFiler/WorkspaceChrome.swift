@@ -21,7 +21,7 @@ struct WorkspaceProfilePicker: View {
         Picker("Library profile", selection: $m.activeID) {
             if m.profiles.isEmpty { Text("No profiles — open Settings").tag(m.activeID) }
             ForEach(m.profiles) { Text($0.name).tag($0.id) }
-        }.labelsHidden().frame(width: 220)
+        }.labelsHidden().pickerStyle(.menu).controlSize(.regular).fixedSize(horizontal: false, vertical: true).frame(width: 220)
             .onChange(of: m.activeID) { m.changeProfile() }
             .overlay(alignment: .topLeading) {
                 if m.active.rules.useMagic {

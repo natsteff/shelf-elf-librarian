@@ -29,11 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .windowToolbarStyle(.unified)
             .commands {
                 CommandGroup(replacing: .appInfo) {
-                    Button("About \(AppIdentity.name)") {
-                        var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
-                        if let url = Bundle.main.url(forResource: "AppIcon-v3", withExtension: "icns"), let icon = NSImage(contentsOf: url) { options[.applicationIcon] = icon }
-                        NSApplication.shared.orderFrontStandardAboutPanel(options: options)
-                    }
+                    Button("About \(AppIdentity.name)") { WindowPresentation.about() }
+                }
+                CommandGroup(replacing: .help) {
+                    Button("Shelf Elf Help") { WindowPresentation.help() }.keyboardShortcut("?", modifiers: .command)
                 }
                 CommandMenu("Tools") {
                     Button("Export Settings…") { model.exportSettings() }.disabled(model.busy)
@@ -301,7 +300,8 @@ struct WorkspaceSession: Codable {
     }
     func openWorkspace() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.prompt = "Open Workspace"
-        if panel.runModal() == .OK, let url = panel.url {
+        WindowPresentation.choose(panel) { [self] response in
+            guard response == .OK, let url = panel.url else { return }
             do {
                 try rememberWorkspace(url)
                 if url.startAccessingSecurityScopedResource() { scopeURLs.append(url) }
@@ -405,14 +405,16 @@ struct WorkspaceSession: Codable {
         guard let root = workspace else { error = "Open a workspace first."; return }
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = true; panel.directoryURL = root
         panel.prompt = "Preview Folder Renames"; panel.message = "Using profile: \(active.name). Choose direct child folders of this workspace. All contents, including hidden files, move with a folder rename. Names inside it remain unchanged."
-        guard panel.runModal() == .OK else { return }
-        guard panel.urls.allSatisfy({ $0.deletingLastPathComponent().path == root.path }) else { error = "Choose only direct child folders of the current workspace."; return }
-        let chosen = Set(panel.urls.map(\.path)), p = active
-        busy = true; cancellation = Cancellation(); let token = cancellation; progress = "Validating selected folder contents…"; invalidate()
-        Task {
-            do { folderPlan = try await Task.detached { try planFolders(workspace: root, profile: p, selectedPaths: chosen, cancel: token) }.value; showFolders = true }
-            catch { self.error = error.localizedDescription }
-            busy = false; progress = ""
+        WindowPresentation.choose(panel) { [self] response in
+            guard response == .OK else { return }
+            guard panel.urls.allSatisfy({ $0.deletingLastPathComponent().path == root.path }) else { error = "Choose only direct child folders of the current workspace."; return }
+            let chosen = Set(panel.urls.map(\.path)), p = active
+            busy = true; cancellation = Cancellation(); let token = cancellation; progress = "Validating selected folder contents…"; invalidate()
+            Task {
+                do { folderPlan = try await Task.detached { try planFolders(workspace: root, profile: p, selectedPaths: chosen, cancel: token) }.value; showFolders = true }
+                catch { self.error = error.localizedDescription }
+                busy = false; progress = ""
+            }
         }
     }
     func applyFolders(_ included: Set<UUID>) {
@@ -584,11 +586,12 @@ struct MainView: View {
             Color.clear.frame(height: 48) // Status controls are rendered once, outside the disabled workspace.
 
         }
+        .background(MainWindowAppearance())
         .disabled(m.busy || showSplash)
         .toolbar {
-            ToolbarItem(placement: .navigation) { WorkspaceBrand().disabled(m.busy || showSplash) }
-            ToolbarItem(placement: .principal) { WorkspaceProfilePicker().environmentObject(m).disabled(m.busy || showSplash) }
-            ToolbarItem(placement: .primaryAction) {
+            UnsharedToolbarItem(placement: .navigation) { WorkspaceBrand().disabled(m.busy || showSplash) }
+            UnsharedToolbarItem(placement: .principal) { WorkspaceProfilePicker().environmentObject(m).disabled(m.busy || showSplash) }
+            UnsharedToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
                     Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
                         .labelStyle(.iconOnly).instantHelp("Profile Settings")
@@ -834,7 +837,13 @@ struct SettingsView: View {
                 SettingsHint(text: "Filters workspace files only, without converting them. Matching is case-insensitive: mp4 includes .mp4, .MP4 and .Mp4. Original extensions are preserved.")
                 if draft.kind == .other { Text("Examples: nes, sfc, smc, gba, gb, gbc, n64, nds, chd, iso, zip, 7z. Only the extensions you enter will appear in the workspace.").font(.caption).foregroundStyle(.secondary) }
                 LabeledContent("Destination root") { Text(draft.root.isEmpty ? "Not configured" : draft.root).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
-                Button("Choose Destination Root…") { let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; if panel.runModal() == .OK, let u = panel.url { do { let d = try Directory(u.path); draft.rootIdentity = DirectoryIdentity(device: d.device, inode: d.inode); draft.root = u.path; draft.bookmark = try u.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) } catch { validation = error.localizedDescription } } }
+                Button("Choose Destination Root…") {
+                    let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
+                    WindowPresentation.choose(panel) { response in
+                        guard response == .OK, let u = panel.url else { return }
+                        do { let d = try Directory(u.path); draft.rootIdentity = DirectoryIdentity(device: d.device, inode: d.inode); draft.root = u.path; draft.bookmark = try u.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) } catch { validation = error.localizedDescription }
+                    }
+                }
                 Button("Show Library in Finder", systemImage: "folder") {
                     let url = URL(fileURLWithPath: draft.root)
                     let scoped = url.startAccessingSecurityScopedResource()

@@ -130,9 +130,11 @@ private struct FilingTypeEditor: View {
                     Button("Choose Folder…") {
                         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
                         if !root.isEmpty { panel.directoryURL = URL(fileURLWithPath: root) }
-                        guard panel.runModal() == .OK, let url = panel.url else { return }
+                        WindowPresentation.choose(panel) { response in
+                        guard response == .OK, let url = panel.url else { return }
                         guard !root.isEmpty, url.path == root || url.path.hasPrefix(root + "/") else { error = "Choose a folder inside this profile’s destination root, or enter a relative folder mask."; return }
                         entry.folderMask = url.path == root ? "" : String(url.path.dropFirst(root.count + 1)); error = ""
+                        }
                     }.disabled(root.isEmpty)
                 }
             }

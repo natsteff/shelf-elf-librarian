@@ -10,6 +10,7 @@ final class HoverHelp {
     private weak var owner: NSView?
     private var monitor: Any?
     private var observer: NSObjectProtocol?
+    private var geometryObservers: [NSObjectProtocol] = []
     private var currentMessage = ""
     private var pending: DispatchWorkItem?
     var timing: HoverTiming = .immediate { didSet { hide() } }
@@ -32,6 +33,12 @@ final class HoverHelp {
             }
             return event
         }
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
+            geometryObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self, let changed = note.object as? NSWindow, changed === self.owner?.window else { return }
+                self.hide()
+            })
+        }
         observer = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] _ in self?.hide() }
     }
     func show(_ message: String?, owner: NSView) {
@@ -53,14 +60,20 @@ final class HoverHelp {
     }
     private func present(_ message: String, owner: NSView) {
         label.stringValue = message
-        let width: CGFloat = 300
-        let rect = (message as NSString).boundingRect(with: NSSize(width: width - 20, height: 1000), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: label.font!])
-        let height = ceil(rect.height) + 22
+        guard let window = owner.window else { return }
+        let screen = window.screen?.visibleFrame ?? window.frame
+        let bounds = window.frame.intersection(screen).insetBy(dx: 12, dy: 12)
+        guard bounds.width > 30, bounds.height > 30 else { hide(); return }
+        let maximumWidth = min(CGFloat(340), bounds.width)
+        let natural = (message as NSString).size(withAttributes: [.font: label.font!]).width
+        let width = min(maximumWidth, max(CGFloat(60), ceil(natural) + 24))
+        let rect = (message as NSString).boundingRect(with: NSSize(width: width - 20, height: 2000), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: label.font!])
+        let height = min(bounds.height, ceil(rect.height) + 22)
         let mouse = NSEvent.mouseLocation
-        let screen = owner.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        let x = max(screen.minX, min(mouse.x + 12, screen.maxX - width))
+        let x = max(bounds.minX, min(mouse.x + 12, bounds.maxX - width))
         var y = mouse.y - height - 18
-        if y < screen.minY { y = mouse.y + 20 }
+        if y < bounds.minY { y = mouse.y + 20 }
+        y = max(bounds.minY, min(y, bounds.maxY - height))
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         label.frame = NSRect(x: 10, y: 10, width: width - 20, height: height - 20)
         panel.orderFrontRegardless()
