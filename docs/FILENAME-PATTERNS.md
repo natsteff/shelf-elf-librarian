@@ -90,3 +90,15 @@ New video/music/book profiles enable smart title case. New video profiles also e
 Period handling has one choice: Keep periods, Separator periods → spaces, or All periods → spaced hyphens. A legacy profile with both transformations enabled must select one before saving. Existing saved files can still be opened for correction; no automatic choice is made.
 
 The workspace column header stays fixed above scrolling rows. A flagged unrecognized word shows Spelling review when the proposed name is unchanged; applying a spelling replacement that changes the name shows Rename proposed.
+
+### Library operations and confirmations
+
+Workspace row checkmarks and Rename Selected rename in place. The redundant rename-preview button and File only checkbox have been removed. The bottom preview button follows the selected operation: Preview Copy to Library or Preview Move to Library. Ordinary preview uses proposed filenames and still requires confirmed components.
+
+Run Magic analyzes selected visible files and opens one confirmation with a Copy/Move choice defaulting to the workspace operation. Proposed filenames and profile folder masks determine destinations. Cancel leaves the suggestions available but performs no filesystem operation.
+
+The operation preview also offers Skip Individual Review & Copy All… / Move All…. This path keeps current filenames and uses folder masks for destinations. All means the complete set of files in that preview, not unrelated or hidden selections. It opens a confirmation with eligible/blocked counts and full source/destination paths.
+
+Both explicit paths bypass only the per-item reviewed flag for this operation. Workspace flags are unchanged. Missing folder components, collisions, stale sources, linked/unavailable roots and executor checks still apply. Only actionable rows execute after confirmation. Copy leaves source filenames unchanged; Move publishes into the library under the displayed destination names.
+
+Missing library destinations prompt Open Profile Settings or Cancel. Invalid paths and unavailable directories have distinct messages. Save validation failures scroll to the message, and period-handling examples explicitly preserve the final extension separator and extension.

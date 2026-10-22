@@ -285,11 +285,24 @@ public func categories(_ root: String) throws -> [String] {
         guard let v = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isAliasFileKey]) else { return false }; return v.isDirectory == true && v.isSymbolicLink != true && v.isAliasFile != true
     }.map(\.lastPathComponent).sorted()
 }
+/// Explicit one-run confirmation bypass. Copies items so workspace review flags are unchanged.
+public func makeConfirmedFilingPlan(items: [Item], profile: Profile, mode: Mode, keepCurrentNames: Bool) throws -> Plan {
+    guard mode != .clean else { throw fail("Choose Copy or Move for library filing.") }
+    let confirmed = items.map { item in var copy = item; copy.reviewed = true; return copy }
+    var destination = profile; destination.rootAllowed = true
+    return try makePlan(items: confirmed, profile: destination, mode: mode, category: destination.fixedCategory, fileOnly: keepCurrentNames)
+}
+
 public func makePlan(items: [Item], profile p: Profile, mode: Mode, category: String, fileOnly: Bool) throws -> Plan {
     guard !items.isEmpty else { throw fail("Select at least one visible file.") }
     try p.rules.validate()
     guard !p.folderMask.hasPrefix("/") else { throw fail("Folder masks must be relative to the configured root.") }
     if mode != .clean { if category.isEmpty && !p.rootAllowed { throw fail("Choose and confirm a destination category.") }; if !category.isEmpty { try component(category) }; if !p.fixedCategory.isEmpty && category != p.fixedCategory { throw fail("Confirm the fixed category: \(p.fixedCategory)") } }
+    if mode != .clean {
+        guard !p.root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw fail("Library destination not configured. Choose Profile Settings → Profile & destination → Choose Destination Root before copying or moving files.") }
+        guard p.root.hasPrefix("/"), !p.root.contains("//"), !p.root.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw fail("Library destination is not a valid absolute folder path. Reconnect it using Choose Destination Root in Profile Settings.") }
+        do { _ = try Directory(p.root) } catch { throw fail("Library destination is unavailable: \(p.root). Reconnect it using Choose Destination Root in Profile Settings. \(error.localizedDescription)") }
+    }
     let root = try Directory(mode == .clean ? items[0].url.deletingLastPathComponent().path : p.root)
     if mode != .clean, let identity = p.rootIdentity { guard root.device == identity.device, root.inode == identity.inode else { throw fail("Configured root identity changed. Reconnect in Settings; no automatic redirection.") } }
     var rows: [PlanRow] = []

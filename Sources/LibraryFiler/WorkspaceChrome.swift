@@ -72,7 +72,7 @@ struct WorkspaceActionBar: View {
                 .instantHelp("Immediately rename selected visible files to their proposed names in their current folders. Successful rows are deselected; files are not filed into the library.")
             if m.active.rules.useMagic {
                 Button("Run Magic", systemImage: "wand.and.stars") { m.analyzeMagic() }.disabled(m.visibleSelected.isEmpty)
-                    .instantHelp("Run Magic on selected visible files. Proposes components using filename evidence, folders and remembered corrections; never runs automatically.")
+                    .instantHelp("Analyze selected visible files, then confirm Copy or Move to Library using proposed filenames. Nothing is copied or moved until confirmation.")
             }
             Spacer(minLength: 8)
             HStack(spacing: 5) {
@@ -110,14 +110,11 @@ struct WorkspaceFilingBar: View {
                 HStack(spacing: 12) {
                     Picker("Operation", selection: $m.mode) { Text("Copy to Library").tag(Mode.copy); Text("Move to Library").tag(Mode.move) }
                         .labelsHidden().frame(width: 165).onChange(of: m.mode) { m.invalidate() }
-                    Toggle("File only", isOn: $m.fileOnly).onChange(of: m.fileOnly) { m.invalidate() }
-                        .instantHelp("Copy or move using current filenames, without applying proposed names again. Folder masks still determine destination subfolders.")
+
                 }
                 HStack(spacing: 8) {
-                    Button("Preview Renames…") { m.preview(true) }.disabled(m.visibleSelected.isEmpty)
-                        .instantHelp("Clean Preview: review renames in the existing folders before Apply. Row checkmarks and Rename Selected remain immediate actions.")
-                    Button("Preview Filing…") { m.preview(false) }.disabled(m.visibleSelected.isEmpty)
-                        .buttonStyle(.borderedProminent).instantHelp("File Preview: review copying or moving selected visible files into the library before Apply.")
+                    Button(m.mode == .copy ? "Preview Copy to Library…" : "Preview Move to Library…") { m.preview(false) }.disabled(m.visibleSelected.isEmpty)
+                        .buttonStyle(.borderedProminent).instantHelp("Review proposed names and destinations for the selected operation. The preview also offers copying or moving with current names without individual component review.")
                 }
             }
         }.controlSize(.small).padding(.horizontal, 16).padding(.vertical, 12)

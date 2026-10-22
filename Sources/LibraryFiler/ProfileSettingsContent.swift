@@ -23,6 +23,18 @@ struct ProfileSettingsContent: View {
         case .other: return "File Name"
         }
     }
+    private var exampleExtension: String {
+        switch profile.kind {
+        case .video: return ".mp4"
+        case .music: return ".mp3"
+        case .audiobook: return profile.effectiveBookSubtype == .ebook ? ".epub" : profile.effectiveBookSubtype == .comic ? ".cbz" : ".m4b"
+        case .documents: return ".pdf"
+        case .roms: return ".nes"
+        case .photos: return ".jpg"
+        case .software: return ".exe"
+        case .other: return ".txt"
+        }
+    }
     private var suggested: Profile { ProfileSetup.configured(profile.kind, name: profile.name, subtype: profile.bookSubtype) }
     private var periodChoice: Binding<String> {
         Binding(get: { profile.replaceDots && profile.rules.dotsToDashes ? "conflict" : profile.rules.dotsToDashes ? "dashes" : profile.replaceDots ? "spaces" : "keep" }, set: { choice in
@@ -100,7 +112,7 @@ struct ProfileSettingsContent: View {
                     if !showFolderInFinder(url) { validation = "Library folder unavailable. Choose Destination Root to reconnect." }
                 }.disabled(profile.root.isEmpty)
             }
-            SettingsHint(text: "Folder masks create subfolders beneath this root. Preview Filing shows the complete destination before you apply it.")
+            SettingsHint(text: "Folder masks create subfolders beneath this root. The Copy/Move preview shows the complete destination before you apply it.")
         }
         Section("2. Read filenames") {
             Button("Workspace Filename Patterns & Filing Types…", action: patterns)
@@ -126,7 +138,7 @@ struct ProfileSettingsContent: View {
                 Text("All periods → ‘ - ’").tag("dashes")
             }
             if periodChoice.wrappedValue == "conflict" { Text("Both old period options are enabled. Choose one before saving.").foregroundStyle(.orange) }
-            SettingsHint(text: periodChoice.wrappedValue == "dashes" ? "Every basename period changes: Name.v1.2 → Name - v1 - 2. The extension is preserved." : sample.replacingOccurrences(of: " ", with: ".") + " → " + sample + ". Separator mode preserves decimals and dotted initials; the extension is unchanged.")
+            SettingsHint(text: periodChoice.wrappedValue == "dashes" ? "Name.v1.2" + exampleExtension + " → Name - v1 - 2" + exampleExtension + ". Only basename periods change, including decimals. The final extension separator and extension (" + exampleExtension + ") remain unchanged." : sample.replacingOccurrences(of: " ", with: ".") + exampleExtension + " → " + sample + exampleExtension + ". Only periods within the basename are processed. The final extension separator and extension (" + exampleExtension + ") remain unchanged in every mode. Separator mode preserves decimals and dotted initials.")
             Toggle("Title case", isOn: $profile.titleCase)
             Toggle("Smart title case", isOn: Binding(get: { profile.rules.smartTitleCase }, set: { var r = profile.rules; r.smartTitleCase = $0; profile.rules = r })).disabled(!profile.titleCase)
             SettingsHint(text: "Smart title case keeps short connecting words lowercase in names such as ‘" + sample + " of the Year’. Requires Title case and uses the lowercase word list in General Settings. Preferred-case exceptions apply last.")
@@ -176,7 +188,7 @@ struct ProfileSettingsContent: View {
         }
         Section("5. Magic & learning") {
             Toggle("Enable Magic for this profile", isOn: Binding(get: { profile.rules.useMagic }, set: { var r = profile.rules; r.useMagic = $0; profile.rules = r }))
-            SettingsHint(text: "Magic runs only when requested for selected files. It proposes components from filename evidence, parent folders and remembered corrections; output masks still determine the resulting names. No online lookup or embedded metadata reading.")
+            SettingsHint(text: "Run Magic analyzes selected visible files, then asks you to confirm Copy or Move to Library. Output masks determine proposed names and destinations. The default operation follows the workspace dropdown. Nothing is copied or moved until confirmation. No online lookup or embedded metadata reading.")
             Toggle("Remember confirmed corrections by default", isOn: Binding(get: { profile.rememberCorrectionsByDefault ?? true }, set: { profile.rememberCorrectionsByDefault = $0 }))
             SettingsHint(text: "Starts Remember checked after refresh. Only successful, approved operations supply examples. You can turn it off for selected files or forget examples below.")
             Button("Recommendations & Learning…", action: recommendations)

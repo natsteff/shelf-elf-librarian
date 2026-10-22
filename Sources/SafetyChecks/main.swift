@@ -712,6 +712,39 @@ final class FilerCoreTests {
         let f = try JSONDecoder().decode(Fields.self, from: Data(#"{"title":"Old"}"#.utf8))
         XCTAssertEqual(f.type, ""); XCTAssertEqual(f.system, ""); XCTAssertEqual(f.custom, nil)
     }
+    func testConfirmedFilingPaths() throws {
+        var profile = ProfileSetup.configured(.other, name: "Test")
+        profile.extensions = "txt"; profile.root = library.path; profile.folderMask = ""; profile.filenameMask = "{Title}"
+        let url = src.appendingPathComponent("Original.txt"); try Data("original bytes".utf8).write(to: url)
+        var fields = Fields(); fields.title = "Proposed"
+        let item = Item(url: url, size: 14, fields: fields, evidence: "Test", reviewed: false)
+        let ordinary = try makePlan(items: [item], profile: profile, mode: .copy, category: "", fileOnly: false)
+        XCTAssertFalse(ordinary.rows[0].actionable)
+        let keep = try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .copy, keepCurrentNames: true)
+        XCTAssertTrue(keep.rows[0].actionable); XCTAssertTrue(keep.rows[0].destination.hasSuffix("/Original.txt"))
+        XCTAssertFalse(item.reviewed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keep.rows[0].destination)) // planning never executes
+        let rename = try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .move, keepCurrentNames: false)
+        XCTAssertTrue(rename.rows[0].actionable); XCTAssertTrue(rename.rows[0].destination.hasSuffix("/Proposed.txt"))
+        XCTAssertEqual(try executor().execute(keep).completed, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertFalse(try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .copy, keepCurrentNames: true).rows[0].actionable) // collision remains blocked
+        var missingFolder = profile; missingFolder.folderMask = "{Author}"
+        XCTAssertFalse(try makeConfirmedFilingPlan(items: [item], profile: missingFolder, mode: .copy, keepCurrentNames: true).rows[0].actionable)
+        XCTAssertThrowsError(try makeConfirmedFilingPlan(items: [item], profile: profile, mode: .clean, keepCurrentNames: true))
+        var noRoot = profile; noRoot.root = ""
+        do { _ = try makeConfirmedFilingPlan(items: [item], profile: noRoot, mode: .copy, keepCurrentNames: true); XCTAssertTrue(false) }
+        catch { XCTAssertTrue(error.localizedDescription.contains("Library destination not configured")) }
+        noRoot.root = library.appendingPathComponent("Missing").path
+        do { _ = try makeConfirmedFilingPlan(items: [item], profile: noRoot, mode: .copy, keepCurrentNames: true); XCTAssertTrue(false) }
+        catch { XCTAssertTrue(error.localizedDescription.contains("Library destination is unavailable")) }
+        noRoot.root = "relative/path"
+        do { _ = try makeConfirmedFilingPlan(items: [item], profile: noRoot, mode: .copy, keepCurrentNames: true); XCTAssertTrue(false) }
+        catch { XCTAssertTrue(error.localizedDescription.contains("valid absolute folder")) }
+        XCTAssertEqual(try executor().execute(rename).completed, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rename.rows[0].destination))
+    }
     func testPatternProtectionAndExplicitFiling() throws {
         var music = ProfileSetup.configured(.music, name: "Music"); music.exceptions = "AC-DC"
         let fields = Names.basicInterpret(src.appendingPathComponent("ac - dc - song name.mp3"), music).0
@@ -937,4 +970,5 @@ do { try suite.setUpWithError(); try suite.testRomsForgeAndOtherContentDefaults(
 do { try suite.setUpWithError(); try suite.testBookHierarchyAndParentPatterns(); try suite.tearDownWithError(); print("Checked standalone and series book hierarchy and parent-folder input") } catch { failures += 1; print("FAIL testBookHierarchyAndParentPatterns: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testProfileMigrationArchiveAndNotes(); try suite.tearDownWithError(); print("Checked profile migration, archives, notes and legacy decoding") } catch { failures += 1; print("FAIL testProfileMigrationArchiveAndNotes: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testPatternProtectionAndExplicitFiling(); try suite.tearDownWithError(); print("Checked protected spellings and explicit classified copy") } catch { failures += 1; print("FAIL testPatternProtectionAndExplicitFiling: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 51 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testConfirmedFilingPaths(); try suite.tearDownWithError(); print("Checked explicit filing bypass, original names, proposed names and destination guards") } catch { failures += 1; print("FAIL testConfirmedFilingPaths: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 52 fixture scenarios"); exit(failures == 0 ? 0 : 1)

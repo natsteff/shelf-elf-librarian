@@ -70,12 +70,20 @@ struct WorkspaceSession: Codable {
     @Published var availableCategories: [String] = []
     @Published var categoryConfirmed = false
     @Published var mode: Mode = .copy
-    @Published var fileOnly = false
     @Published var busy = false
     @Published var status = "Choose a profile and open a workspace, then review filename cleanup."
     @Published var progress = ""
     @Published var plan: Plan?
     @Published var showReview = false
+    @Published var showQuickFiling = false
+    @Published var quickPlan: Plan?
+    @Published var quickFailure: String?
+    private var pendingSkipFiling = false
+    @Published var quickMode: Mode = .copy
+    @Published var quickKeepNames = false
+    private var quickItems: [Item] = []
+    private var quickProfile: Profile?
+    private var previewItems: [Item] = []
     @Published var showHistory = false
     @Published var showSettings = false
     @Published var showExcluded = false
@@ -327,13 +335,61 @@ struct WorkspaceSession: Codable {
         // The profile now fully specifies the destination. Preview is the confirmation step.
         var p = active
         p.rootAllowed = true
-        let chosen = visibleSelected, operation: Mode = clean ? .clean : mode, cat = p.fixedCategory, only = fileOnly
+        let chosen = visibleSelected, operation: Mode = clean ? .clean : mode, cat = p.fixedCategory
         guard !chosen.isEmpty else { error = "Select eligible visible files first."; return }
+        if !clean && !checkLibraryDestination(p) { return }
+        previewItems = chosen
         busy = true; progress = "Hashing preview sources…"
-        Task { do { plan = try await Task.detached { try makePlan(items: chosen, profile: p, mode: operation, category: cat, fileOnly: clean ? false : only) }.value; showReview = true } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
+        Task { do { plan = try await Task.detached { try makePlan(items: chosen, profile: p, mode: operation, category: cat, fileOnly: false) }.value; showReview = true } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
+    }
+    func checkLibraryDestination(_ profile: Profile) -> Bool {
+        if profile.root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let alert = NSAlert(); alert.messageText = "Library destination not configured"
+            alert.informativeText = "Choose a destination folder in Profile Settings → Profile & destination → Choose Destination Root before copying or moving files."
+            alert.addButton(withTitle: "Open Profile Settings"); alert.addButton(withTitle: "Cancel")
+            WindowPresentation.confirm(alert) { [weak self] response in if response == .alertFirstButtonReturn { self?.showSettings = true } }
+            return false
+        }
+        do {
+            guard profile.root.hasPrefix("/"), !profile.root.contains("//"), !profile.root.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw fail("The library destination is not a valid absolute folder path.") }
+            _ = try Directory(profile.root)
+            return true
+        } catch { self.error = "Library destination unavailable: \(profile.root). Reconnect it in Profile Settings → Choose Destination Root. \(error.localizedDescription)"; return false }
+    }
+    func skipReviewAndFile() {
+        guard !busy, let preview = plan, preview.mode != .clean else { return }
+        quickItems = previewItems; quickProfile = preview.profile; quickMode = preview.mode; quickKeepNames = true
+        pendingSkipFiling = true; showReview = false
+    }
+    func reviewDismissed() {
+        guard pendingSkipFiling else { return }
+        pendingSkipFiling = false; rebuildQuickFiling(quickMode)
+    }
+    func beginQuickFiling(_ chosen: [Item], profile: Profile, mode: Mode, keepNames: Bool) {
+        guard !chosen.isEmpty, checkLibraryDestination(profile) else { return }
+        quickItems = chosen; quickProfile = profile; quickMode = mode; quickKeepNames = keepNames
+        rebuildQuickFiling(mode)
+    }
+    func rebuildQuickFiling(_ mode: Mode) {
+        guard !busy, let profile = quickProfile else { return }
+        let chosen = quickItems, keepNames = quickKeepNames
+        quickPlan = nil; quickFailure = nil; busy = true; progress = "Checking library destinations…"
+        Task {
+            do {
+                let result = try await Task.detached { try makeConfirmedFilingPlan(items: chosen, profile: profile, mode: mode, keepCurrentNames: keepNames) }.value
+                quickPlan = result; showQuickFiling = true
+            } catch { quickFailure = error.localizedDescription; showQuickFiling = true }
+            busy = false; progress = ""
+        }
+    }
+    func applyQuickFiling() {
+        guard !busy, var confirmed = quickPlan else { return }
+        confirmed.rows = confirmed.rows.filter(\.actionable)
+        guard !confirmed.rows.isEmpty else { return }
+        plan = confirmed; quickPlan = nil; apply()
     }
     func apply() {
-        guard let p = plan else { return }; busy = true; showReview = false; cancellation = Cancellation(); let token = cancellation; let db = support.appendingPathComponent("operations.sqlite")
+        guard let p = plan else { return }; busy = true; showReview = false; showQuickFiling = false; cancellation = Cancellation(); let token = cancellation; let db = support.appendingPathComponent("operations.sqlite")
         Task { do {
             let r = try await Task.detached { let j = try Journal(url: db); return try Executor(journal: j).execute(p, cancel: token) { done, total in Task { @MainActor in self.progress = "\(done.formatted()) / \(total.formatted()) files" } } }.value
             status = "\(r.completed) completed • \(r.failed) failed. \(token.cancelled ? "Cancelled; completed items remain completed." : "")"
@@ -383,7 +439,8 @@ struct WorkspaceSession: Codable {
     }
     func analyzeMagic() {
         guard !busy, active.rules.useMagic, !visibleSelected.isEmpty else { return }
-        let chosen = visibleSelected, profile = active, memory = observations
+        let chosen = visibleSelected, profile = active, memory = observations, operation = mode
+        guard checkLibraryDestination(profile) else { return }
         cancellation = Cancellation(); let token = cancellation
         busy = true; progress = "Analyzing with Magic…"; invalidate()
         Task {
@@ -391,7 +448,10 @@ struct WorkspaceSession: Codable {
                 let results = try await Task.detached { try Magic.prepare(chosen, profile: profile, memories: memory, cancel: token) }.value
                 if token.cancelled { throw fail("Magic analysis cancelled; existing proposals unchanged.") }
                 for result in results { if let index = items.firstIndex(where: { $0.id == result.id }) { items[index] = result } }
-                status = "Magic suggestions ready. Review alternatives and confirm filename components; uncertain items remain excluded from Apply."
+                status = "Magic analysis complete. Confirm Copy or Move to apply proposed names in the library."
+                busy = false; progress = ""
+                beginQuickFiling(results, profile: profile, mode: operation, keepNames: false)
+                return
             } catch { status = error.localizedDescription }
             busy = false; progress = ""
         }
@@ -650,7 +710,8 @@ struct MainView: View {
         .overlay(alignment: .bottom) { if !showSplash { OperationStatusBar().environmentObject(m) } }
         .sheet(isPresented: $m.showGeneralSettings) { GeneralSettingsView().environmentObject(m) }
         .sheet(isPresented: $m.showSettings) { SettingsView(profile: m.active, existing: m.profiles.contains { $0.id == m.activeID }, save: m.saveProfile, delete: m.deleteProfile).frame(width: 690, height: 740) }
-        .sheet(isPresented: $m.showReview) { ReviewView().environmentObject(m) }
+        .sheet(isPresented: $m.showReview, onDismiss: { m.reviewDismissed() }) { ReviewView().environmentObject(m) }
+        .sheet(isPresented: $m.showQuickFiling) { QuickFilingView().environmentObject(m) }
         .sheet(isPresented: $m.showHistory) { HistoryView().environmentObject(m) }
         .sheet(isPresented: $m.showFolders) { FolderReviewView().environmentObject(m) }
         .sheet(isPresented: $m.showBatchNames) { BatchNamesView().environmentObject(m) }
@@ -819,13 +880,14 @@ struct SettingsView: View {
         savedProfileID = existing ? profile.id : nil; savedProfileName = profile.name
     }
     var body: some View {
+        ScrollViewReader { scroll in
         VStack(alignment: .leading) {
             Text("Profile Settings: " + (draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "New Profile" : draft.name)).font(.title2.bold()).lineLimit(2)
             ScrollView { Form {
                 ProfileSettingsContent(profile: $draft, validation: $validation,
                     patterns: { showPatterns = true }, guide: { showMaskGuide = true },
                     general: { showGeneral = true }, recommendations: { showRecommendations = true })
-                if !validation.isEmpty { Text(validation).foregroundStyle(.red) }
+                if !validation.isEmpty { Text(validation).foregroundStyle(.red).id("profileValidation") }
             }.formStyle(.grouped).textFieldStyle(.roundedBorder) }
             Divider().padding(.top, 8).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 12) {
@@ -835,9 +897,10 @@ struct SettingsView: View {
                     Text("Removes settings only. Library files stay untouched.").font(.caption).foregroundStyle(.secondary)
                 }.padding(.bottom, 6)
             }
-            HStack { Button("Duplicate as New Profile") { draft.id = UUID(); draft.name += " Copy" }; Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save") { do { draft.rootAllowed = true; draft.exceptions = ""; try draft.validate(); save(draft); dismiss() } catch { validation = error.localizedDescription } }.keyboardShortcut(.defaultAction) }
+            HStack { Button("Duplicate as New Profile") { draft.id = UUID(); draft.name += " Copy" }; Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save") { do { draft.rootAllowed = true; draft.exceptions = ""; try draft.validate(); save(draft); dismiss() } catch { validation = error.localizedDescription; DispatchQueue.main.async { withAnimation { scroll.scrollTo("profileValidation", anchor: .bottom) } } } }.keyboardShortcut(.defaultAction) }
             }.padding(.top, 2).padding(.bottom, 4)
         }.padding()
+        }
         .sheet(isPresented: $showGeneral) { GeneralSettingsView().environmentObject(m) }
         .sheet(isPresented: $showRecommendations) { RecommendationsView(profile: $draft).environmentObject(m) }
         .sheet(isPresented: $showMaskGuide) { MaskGuideView() }
@@ -860,7 +923,7 @@ struct ReviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             if let plan = m.plan {
                 Text("Review \(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) Operation").font(.title2.bold())
-                Text("\(plan.profile.name) • \(plan.category.isEmpty ? "Library root / source folder" : plan.category) • file contents remain unchanged").foregroundStyle(.secondary)
+                Text("\(plan.profile.name) • \(plan.mode == .clean ? "Workspace folders" : plan.profile.root) • file contents remain unchanged").foregroundStyle(.secondary).textSelection(.enabled)
                 ScrollView { LazyVStack(alignment: .leading, spacing: 12) { ForEach(plan.rows) { r in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack { Toggle(r.status, isOn: Binding(get: { included.contains(r.id) }, set: { if $0 { included.insert(r.id) } else { included.remove(r.id) } })).disabled(!r.actionable); Spacer(); if !r.group.isEmpty { Text("Group: \(r.group)").font(.caption) } }
@@ -871,7 +934,7 @@ struct ReviewView: View {
                     }.textSelection(.enabled).padding().frame(maxWidth: .infinity, alignment: .leading).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
                 } } }
                 Text("Cancellation stops between files. Completed files remain completed. A group may be partially completed; inspect History for recovery.").font(.caption)
-                HStack { Button("Back") { m.showReview = false }; Spacer(); Button("\(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) \(included.count) files") { var p = plan; p.rows = plan.rows.filter { included.contains($0.id) }; m.plan = p; m.apply() }.buttonStyle(.borderedProminent).disabled(included.isEmpty) }
+                HStack { Button("Back") { m.showReview = false }; if plan.mode != .clean { Button("Skip Individual Review & \(plan.mode == .copy ? "Copy" : "Move") All…") { m.skipReviewAndFile() } }; Spacer(); Button("\(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) \(included.count) files") { var p = plan; p.rows = plan.rows.filter { included.contains($0.id) }; m.plan = p; m.apply() }.buttonStyle(.borderedProminent).disabled(included.isEmpty) }
             }
         }.padding(20).frame(width: 930, height: 700).onAppear { included = Set(m.plan?.rows.filter(\.actionable).map(\.id) ?? []) }
     }
