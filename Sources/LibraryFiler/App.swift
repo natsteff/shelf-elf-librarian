@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var body: some Scene {
         WindowGroup(AppIdentity.name) { MainView().environmentObject(model).frame(minWidth: 1100, minHeight: 700) }
             .defaultSize(width: 1320, height: 850)
+            .windowToolbarStyle(.unified)
             .commands {
                 CommandGroup(replacing: .appInfo) {
                     Button("About \(AppIdentity.name)") {
@@ -522,64 +523,42 @@ struct MainView: View {
     var version: String { AppIdentity.version }
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Link(destination: URL(string: "https://github.com/natsteff/shelf-elf-librarian")!) {
-                HStack { BrandImage(name: "Header-Icon").frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 10)); VStack(alignment: .leading) { Text(AppIdentity.name + (AppEnvironment.isFreshInstallTest ? " — Fresh Install Test" : "")).font(.title2.bold()); Text(version).font(.caption).foregroundStyle(.secondary) } }
-            }.buttonStyle(.plain).instantHelp("Open Shelf Elf Librarian on GitHub"); Spacer(); HStack {
-                Text("Library profile")
-                Picker("Library profile", selection: $m.activeID) { if m.profiles.isEmpty { Text("No profiles — open Settings").tag(m.activeID) }; ForEach(m.profiles) { Text($0.name).tag($0.id) } }.labelsHidden().onChange(of: m.activeID) { m.changeProfile() }
-                    .overlay(alignment: .topLeading) {
-                        if m.active.rules.useMagic {
-                            Label("Magic enabled", systemImage: "wand.and.stars").font(.caption).foregroundStyle(.secondary)
-                                .instantHelp("Magic is enabled for this profile. Run Magic on Selected Files starts analysis; it never runs automatically.")
-                                .offset(y: 26)
-                        }
-                    }
-            }.frame(width: 300); Button("Profile Settings", systemImage: "gearshape") { m.showSettings = true }; Button("General Settings", systemImage: "slider.horizontal.3") { m.showGeneralSettings = true }; Button("History", systemImage: "clock") { m.loadHistory(); m.showHistory = true } }.padding()
+            WorkspaceLocationBar().environmentObject(m)
             Divider()
-            HStack { Button("Open Workspace…", systemImage: "folder") { m.openWorkspace() }; Button("Refresh", systemImage: "arrow.clockwise") { m.refresh() }.disabled(m.workspace == nil); Toggle("Include subfolders", isOn: $m.recursive).onChange(of: m.recursive) { m.refresh() }; Spacer() }.padding(.horizontal).padding(.vertical, 10)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Button("Show Workspace in Finder", systemImage: "folder") {
-                        if let url = m.workspace, !showFolderInFinder(url) { m.error = "Workspace folder is unavailable. Use Open Workspace to reconnect." }
-                    }.disabled(m.workspace == nil).instantHelp("Open the workspace folder’s contents in Finder.")
-                    Text("Currently open Workspace: " + (m.workspace?.path ?? "None")).font(.callout).textSelection(.enabled).lineLimit(2)
-                }
-                HStack { Button("Select All Visible") { m.selected = Set(m.visible.map(\.id)); m.invalidate() }; Button("Select None") { m.selected = []; m.invalidate() }; Button("Rename Selected to Proposed Names") { m.renameNow(Set(m.visibleSelected.map(\.id))) }.disabled(!m.visibleSelected.contains { !m.nameMatches($0) }).instantHelp("Immediately rename selected visible files in their current folders. Successful rows are deselected. This does not file them into the library."); if m.active.rules.useMagic { Button("Run Magic on Selected Files") { m.analyzeMagic() }.disabled(m.visibleSelected.isEmpty).instantHelp("Analyze selected visible filenames, folders and remembered corrections. Review the suggested components before filing.") }; HStack(spacing: 4) {
-                    TextField("Filter filenames", text: $m.filter).focused($filterFocused).textFieldStyle(.plain)
-                    if !m.filter.isEmpty {
-                        Button { m.filter = ""; filterFocused = true } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                            .buttonStyle(.plain).accessibilityLabel("Clear filename filter").instantHelp("Clear filename filter")
-                    }
-                }.padding(5).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.2)))
-                    .frame(maxWidth: 350).onChange(of: m.filter) { m.invalidate() }
-                Text(m.filter.isEmpty ? "\(m.items.count) eligible files" : "Showing \(m.visible.count) of \(m.items.count) eligible files").font(.caption).foregroundStyle(.secondary)
-                Spacer() }
-            }.padding(.horizontal).padding(.bottom, 10)
+            WorkspaceActionBar().environmentObject(m)
+            Divider()
             HSplitView {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Button("Include") { m.toggleVisibleSelection() }.frame(width: 55).instantHelp("Select all visible files, or clear them when all are selected.")
-                            sortHeader("Current filename / proposed filename", column: "name").frame(maxWidth: .infinity, alignment: .leading)
-                            sortHeader("OK", column: "ok").frame(width: 30).instantHelp("A checkmark means the proposed filename matches the current filename exactly. Click to sort matching names together.")
-                            sortHeader("Type / Size", column: "type").frame(width: 100).instantHelp("Sort by file type, then numeric size within each type.")
-                            sortHeader("Components", column: "confirmation").frame(width: 150, alignment: .leading)
-                        }.buttonStyle(.plain).font(.caption.bold()).foregroundStyle(.secondary).padding(10)
+                        HStack(spacing: 10) {
+                            Toggle("Include all visible files", isOn: Binding(get: { !m.visible.isEmpty && m.visible.allSatisfy { m.selected.contains($0.id) } }, set: { _ in m.toggleVisibleSelection() }))
+                                .labelsHidden().frame(width: 28).instantHelp("Select all visible files, or clear them when all are selected.")
+                            sortHeader("Current / proposed filename", column: "name").frame(maxWidth: .infinity, alignment: .leading)
+                            sortHeader("Type / size", column: "type").frame(width: 70)
+                            sortHeader("Name status", column: "ok").frame(width: 100, alignment: .leading)
+                            sortHeader("Filing", column: "confirmation").frame(width: 44)
+                        }.buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                         Divider()
                         ForEach(m.visible) { item in
                             let proposal = try? proposedFilename(item, profile: m.active)
                             let nameMatches = proposal.map { $0.utf8.elementsEqual(item.url.lastPathComponent.utf8) } ?? false
-                            HStack(alignment: .top) {
-                                Toggle("Include", isOn: Binding(get: { m.selected.contains(item.id) }, set: { if $0 { m.selected.insert(item.id) } else { m.selected.remove(item.id) }; m.invalidate() })).labelsHidden().frame(width: 55)
+                            HStack(alignment: .top, spacing: 10) {
+                                Toggle("Include", isOn: Binding(get: { m.selected.contains(item.id) }, set: { if $0 { m.selected.insert(item.id) } else { m.selected.remove(item.id) }; m.invalidate() })).labelsHidden().frame(width: 28)
                                 FilenameComparisonView(item: item, nameMatches: nameMatches).environmentObject(m)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                Image(systemName: "checkmark").foregroundStyle(.secondary).opacity(nameMatches ? 1 : 0).frame(width: 30)
+                                VStack(alignment: .center) { Text(item.url.pathExtension.uppercased()); Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)) }.font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 70, alignment: .center).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
+                                Text(nameMatches ? "Unchanged" : proposal == nil ? "Needs attention" : "Rename proposed")
+                                    .font(.system(size: 11)).foregroundStyle(nameMatches ? Color.secondary : proposal == nil ? Color.orange : Color.accentColor)
+                                    .frame(width: 100, alignment: .leading).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
                                     .instantHelp(nameMatches ? "Filename already matches—no rename needed." : "Proposed filename differs from the current filename.")
-                                VStack(alignment: .center) { Text(item.url.pathExtension.uppercased()); Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)) }.font(.caption).frame(width: 100, alignment: .center).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
-                                Label(item.reviewed ? "Confirmed" : "Review required", systemImage: item.reviewed ? "checkmark.circle" : "pencil.circle").font(.caption).foregroundStyle(item.reviewed ? .green : .orange).frame(width: 150, alignment: .leading).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
+                                Image(systemName: item.reviewed ? "checkmark.circle.fill" : "circle.dashed")
+                                    .foregroundStyle(.secondary).frame(width: 44)
+                                    .accessibilityLabel(item.reviewed ? "Components confirmed for filing" : "Components unconfirmed for filing")
+                                    .contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
                                     .instantHelp(item.reviewed ? "Filename components confirmed for filing. Direct renames are separate. Preview still checks required values and destination conflicts." : "For filing, select this file and confirm its filename components in the right panel. Direct renaming does not confirm components.")
-                            }.padding(10).background { (m.selected.contains(item.id) ? Color.accentColor.opacity(0.08) : Color.clear).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) } }
+                            }.padding(.horizontal, 14).padding(.vertical, 12).background { (m.selected.contains(item.id) ? Color.accentColor.opacity(0.08) : Color.clear).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) } }
                                 .onHover { inside in if inside { hoveredFilenameRow = item.id } else if hoveredFilenameRow == item.id { hoveredFilenameRow = nil } }
                                 .zIndex(hoveredFilenameRow == item.id ? 100 : 0)
                             Divider()
@@ -595,30 +574,31 @@ struct MainView: View {
                                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.padding(24).allowsHitTesting(false)
                     }
-                }.frame(minWidth: 600)
-                FieldEditor().frame(minWidth: 300, idealWidth: 380, maxWidth: .infinity)
+                }.frame(minWidth: 600, maxWidth: .infinity)
+                FieldEditor().frame(minWidth: 280, idealWidth: 340, maxWidth: 400)
+                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
             }
             Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Destination library: \(m.active.root.isEmpty ? "Choose a root in Settings" : m.active.root)").font(.caption).textSelection(.enabled).lineLimit(2)
-                    Button("Show Library in Finder", systemImage: "folder") { m.openLibraryInFinder() }
-                        .disabled(m.active.root.isEmpty)
-                        .instantHelp("Open the active profile’s library folder contents in Finder.")
-                }
-                HStack {
-                    Text("Subfolders follow the profile’s masks and classification mappings").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Picker("Operation", selection: $m.mode) { Text("Copy to Library").tag(Mode.copy); Text("Move to Library").tag(Mode.move) }.frame(width: 225).onChange(of: m.mode) { m.invalidate() }
-                    Toggle("File only", isOn: $m.fileOnly).onChange(of: m.fileOnly) { m.invalidate() }
-                }
-                HStack { Text("\(m.visibleSelected.count) selected visible • \(m.selected.count - m.visibleSelected.count) hidden selections excluded").font(.caption).foregroundStyle(.secondary); Spacer(); Button("Clean Preview") { m.preview(true) }; Button("File Preview…") { m.preview(false) }.buttonStyle(.borderedProminent) }
-            }.padding()
+            WorkspaceFilingBar().environmentObject(m)
             Divider()
             Color.clear.frame(height: 48) // Status controls are rendered once, outside the disabled workspace.
 
         }
         .disabled(m.busy || showSplash)
+        .toolbar {
+            ToolbarItem(placement: .navigation) { WorkspaceBrand().disabled(m.busy || showSplash) }
+            ToolbarItem(placement: .principal) { WorkspaceProfilePicker().environmentObject(m).disabled(m.busy || showSplash) }
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 12) {
+                    Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
+                        .labelStyle(.iconOnly).instantHelp("Profile Settings")
+                    Button { m.showGeneralSettings = true } label: { Label("General Settings", systemImage: "slider.horizontal.3") }
+                        .labelStyle(.iconOnly).instantHelp("General Settings")
+                    Button { m.loadHistory(); m.showHistory = true } label: { Label("History", systemImage: "clock") }
+                        .labelStyle(.iconOnly).instantHelp("History & Undo")
+                }.disabled(m.busy || showSplash)
+            }
+        }
         .overlay {
             if showSplash {
                 SplashView { withAnimation(.easeOut(duration: 0.2)) { showSplash = false } }
@@ -683,6 +663,10 @@ struct OperationStatusBar: View {
                 Button("Show excluded filenames") { m.showExcluded = true }.disabled(m.excluded.isEmpty)
             }
             Spacer()
+            if !m.busy {
+                Text(m.visibleSelected.isEmpty && m.selected.isEmpty ? "No selection" : "\(m.visibleSelected.count) selected visible" + (m.selected.count > m.visibleSelected.count ? " · \(m.selected.count - m.visibleSelected.count) hidden, excluded from actions" : ""))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             if m.busy {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -701,30 +685,56 @@ struct FieldEditor: View {
     func value(_ key: KeyPath<Fields, String>) -> String { let values = Set(m.visibleSelected.map { $0.fields[keyPath: key] }); return values.count == 1 ? values.first! : "" }
     func field(_ label: String, _ key: WritableKeyPath<Fields, String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption.bold()).foregroundStyle(.secondary)
+            Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
             TextField(label, text: Binding(get: { value(key) }, set: { v in m.updateFields { $0[keyPath: key] = v } }), prompt: Text(Set(m.visibleSelected.map { $0.fields[keyPath: key] }).count > 1 ? "Mixed values — type to replace" : label))
                 .accessibilityLabel(label)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
+    private var includesEpisodes: Bool { m.visibleSelected.contains { !$0.fields.season.isEmpty || !$0.fields.episode.isEmpty || $0.fields.type.localizedCaseInsensitiveContains("TV") } }
+    private var includesMovies: Bool { m.visibleSelected.contains { $0.fields.season.isEmpty && $0.fields.episode.isEmpty && !$0.fields.type.localizedCaseInsensitiveContains("TV") } }
+    private var episodeFields: some View {
+        Group {
+            field("Series", \.series)
+            HStack(alignment: .top, spacing: 10) { field("Season", \.season); field("Episode", \.episode) }
+            field("Episode title", \.episodeTitle)
+        }
+    }
     var body: some View {
+        Group {
+            if m.visibleSelected.isEmpty {
+                ContentUnavailableView("Select a file to review", systemImage: "cursorarrow.click", description: Text("Click a filename to view its components. Use checkboxes to edit several files together."))
+                    .padding(12).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else { editor }
+        }
+    }
+    private var editor: some View {
         ScrollView { VStack(alignment: .leading, spacing: 12) {
-            Text("Filename Components").font(.headline)
+            HStack {
+                Text("Filename Components").font(.headline)
+                Spacer()
+                if m.visibleSelected.count > 1 { Text("\(m.visibleSelected.count) selected").font(.system(size: 12)).foregroundStyle(.secondary) }
+            }
             if let item = m.visibleSelected.first {
                 Text((m.visibleSelected.count > 1 ? "Interpretation shown for: " : "Current filename: ") + item.url.lastPathComponent)
-                    .font(.callout.bold()).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 12, weight: .medium)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Edits update proposed names for selected files. Use Rename Selected to Proposed Names to apply them in the current folders.").font(.caption).foregroundStyle(.secondary)
+            Text("Edits update proposed names. Rename Selected or the row checkmark applies them in the current folders.").font(.caption).foregroundStyle(.secondary)
             ClassificationField().environmentObject(m)
-            Text("Parts such as Artist and Title are interpreted from filenames; Magic may also use folder names and remembered corrections. Embedded media tags are not read or changed.").font(.caption).foregroundStyle(.secondary)
-            Text("\(m.visibleSelected.count) visible files selected").foregroundStyle(.secondary)
             if let item = m.visibleSelected.first {
-                Text(item.evidence).font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Interpretation & evidence") { Text(item.evidence).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled) }.font(.system(size: 12))
                 if !item.alternatives.isEmpty {
                     Text(item.confidence).font(.caption.bold())
                     Menu("Choose interpretation") { ForEach(item.alternatives) { choice in Button(choice.label + " — " + choice.confidence) { m.chooseAlternative(item.id, choice: choice) } } }
                 }
             }
-            if m.active.kind == .video || m.active.kind == .documents || m.active.kind == .roms || m.active.kind == .photos || m.active.kind == .software || m.active.kind == .other { field(m.active.kind == .other ? "Filename (without extension)" : "Title", \.title); if m.active.kind == .video { field("Year", \.year); field("Series", \.series); field("Season", \.season); field("Episode", \.episode); field("Episode title", \.episodeTitle) } }
+            if m.active.kind == .video {
+                if includesMovies { field("Title", \.title); field("Year", \.year) }
+                if includesEpisodes { episodeFields }
+                if !includesEpisodes { DisclosureGroup("TV episode components") { episodeFields }.font(.system(size: 12)) }
+                if !includesMovies { DisclosureGroup("Movie components") { field("Title", \.title); field("Year", \.year) }.font(.system(size: 12)) }
+            } else if m.active.kind == .documents || m.active.kind == .roms || m.active.kind == .photos || m.active.kind == .software || m.active.kind == .other {
+                field(m.active.kind == .other ? "Filename (without extension)" : "Title", \.title)
+            }
             ForEach(Array(Set(m.visibleSelected.flatMap { $0.fields.custom?.keys.map { $0 } ?? [] })).sorted(), id: \.self) { key in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(key).font(.caption.bold()).foregroundStyle(.secondary)
@@ -762,13 +772,21 @@ struct FieldEditor: View {
                 }
                 Text("Only components referenced in output masks are required. {Title} and {BookTitle} both use the book title. Extra details come from extraction masks or your edits, not embedded metadata.").font(.caption).foregroundStyle(.secondary)
             }
+            Divider().padding(.vertical, 4)
+            Label(m.visibleSelected.allSatisfy(\.reviewed) ? "Components confirmed for filing" : "Components unconfirmed for filing", systemImage: m.visibleSelected.allSatisfy(\.reviewed) ? "checkmark.circle" : "circle.dashed")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
             Button("Confirm Filename Components", systemImage: "checkmark.circle") { m.confirmFields() }.disabled(m.visibleSelected.isEmpty)
             Button("Edit Selected Names…") { m.showBatchNames = true }.disabled(m.visibleSelected.isEmpty)
-            Text("Row rename buttons and Return in the name editor rename files immediately in the workspace. Component confirmation here is separate and is used for filing. Successful direct renames are deselected.").font(.caption).foregroundStyle(.secondary)
             Toggle("Remember confirmed corrections for Magic", isOn: Binding(get: { !m.visibleSelected.isEmpty && m.visibleSelected.allSatisfy(\.rememberCorrection) }, set: { m.rememberSelected($0) })).disabled(m.visibleSelected.isEmpty)
-            Text("Only successful, user-approved operations supply learning examples. Remembering allows Magic to reuse them in this profile; it never changes rules automatically.").font(.caption).foregroundStyle(.secondary)
-            Text("Edits apply to selected visible files. Mixed filename components stay unchanged unless you type a replacement. Shared author/book filename components define an audiobook group.").font(.caption).foregroundStyle(.secondary)
-        }.textFieldStyle(.roundedBorder).padding() }
+            DisclosureGroup("How edits and filing work") {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("Row rename buttons and Return in the name editor rename files immediately in the workspace. Component confirmation here is separate and is used for filing. Successful direct renames are deselected.")
+                    Text("Parts such as Artist and Title are interpreted from filenames; Magic may also use folder names and remembered corrections. Embedded media tags are not read or changed.")
+                    Text("Only successful, user-approved operations supply learning examples. Remembering allows Magic to reuse them in this profile; it never changes rules automatically.")
+                    Text("Edits apply to selected visible files. Mixed filename components stay unchanged unless you type a replacement. Shared author/book filename components define an audiobook group.")
+                }.font(.system(size: 12)).foregroundStyle(.secondary)
+            }.font(.system(size: 12))
+        }.textFieldStyle(.roundedBorder).controlSize(.regular).padding(16) }
     }
 }
 struct SettingsView: View {

@@ -333,8 +333,8 @@ struct DirectFilenameEditor: View {
                     }
                 }
                 .padding(.horizontal, 6).padding(.vertical, 4)
-                .background((nameMatches && !edited ? Color.green : Color.yellow).opacity(0.13), in: RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.2)))
+                .background(Color(nsColor: .textBackgroundColor).opacity(focused || edited ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(focused ? Color.accentColor.opacity(0.7) : Color.secondary.opacity(0.18), lineWidth: focused ? 1.5 : 0.5))
                 .onSubmit { if edited || !nameMatches { m.renameNow([item.id], manualBasename: draft); focused = false } }
                 .onExitCommand { draft = proposed; focused = false }
                 .changedTextHover(text: draft, changes: focused || edited ? [] : changedCharacters, source: false, fontSize: 13, comparison: comparison)

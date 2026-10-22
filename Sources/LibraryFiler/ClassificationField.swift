@@ -15,7 +15,7 @@ struct ClassificationField: View {
     var body: some View {
         if m.active.kind == .video || m.active.kind == .roms || m.active.kind == .music || !types.isEmpty || m.visibleSelected.contains(where: { !FieldCatalog.get(key, $0.fields).isEmpty }) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(key).font(.caption.bold()).foregroundStyle(.secondary)
+                Text(key).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
                 Picker(key, selection: Binding(get: { value }, set: { value in
                     if value == "@add" { name = ""; adding = true }
                     else if value != "@mixed" { m.updateFields { FieldCatalog.set(key, value, &$0) } }
