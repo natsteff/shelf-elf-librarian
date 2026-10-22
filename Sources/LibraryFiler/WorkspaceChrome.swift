@@ -18,18 +18,18 @@ struct WorkspaceBrand: View {
 struct WorkspaceProfilePicker: View {
     @EnvironmentObject var m: Model
     var body: some View {
-        Picker("Library profile", selection: $m.activeID) {
-            if m.profiles.isEmpty { Text("No profiles — open Settings").tag(m.activeID) }
-            ForEach(m.profiles) { Text($0.name).tag($0.id) }
-        }.labelsHidden().pickerStyle(.menu).controlSize(.regular).fixedSize(horizontal: false, vertical: true).frame(width: 220)
-            .onChange(of: m.activeID) { m.changeProfile() }
-            .overlay(alignment: .topLeading) {
-                if m.active.rules.useMagic {
-                    Label("Magic enabled", systemImage: "wand.and.stars").font(.system(size: 11)).foregroundStyle(.secondary)
-                        .instantHelp("Magic is enabled for this profile. Run Magic starts manual analysis of selected visible files.")
-                        .offset(y: 24)
-                }
-            }.frame(height: 54)
+        HStack(spacing: 8) {
+            if m.active.rules.useMagic {
+                Image(systemName: "wand.and.stars").foregroundStyle(.secondary)
+                    .accessibilityLabel("Magic enabled")
+                    .instantHelp("Magic is enabled for this profile. Run Magic starts manual analysis of selected visible files.")
+            }
+            Picker("Library profile", selection: $m.activeID) {
+                if m.profiles.isEmpty { Text("No profiles — open Settings").tag(m.activeID) }
+                ForEach(m.profiles) { Text($0.name).tag($0.id) }
+            }.labelsHidden().pickerStyle(.menu).controlSize(.regular)
+                .frame(width: 220).onChange(of: m.activeID) { m.changeProfile() }
+        }
     }
 }
 struct WorkspaceLocationBar: View {
@@ -43,15 +43,14 @@ struct WorkspaceLocationBar: View {
             HStack(spacing: 5) {
                 Text("Workspace:").foregroundStyle(.secondary)
                 if let url = m.workspace {
-                    Button {
-                        if !showFolderInFinder(url) { m.error = "Workspace folder is unavailable. Use Open Workspace to reconnect." }
-                    } label: { Label(url.lastPathComponent, systemImage: "folder") }
-                        .buttonStyle(.plain).lineLimit(1).truncationMode(.middle)
-                        .instantHelp("Show Workspace in Finder: " + url.path)
+                    Text(url.path).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                        .instantHelp(url.path)
                         .contextMenu {
-                            Button("Show Workspace in Finder") { _ = showFolderInFinder(url) }
                             Button("Copy Full Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(url.path, forType: .string) }
                         }
+                    Button("Show Workspace in Finder", systemImage: "folder") {
+                        if !showFolderInFinder(url) { m.error = "Workspace folder is unavailable. Use Open Workspace to reconnect." }
+                    }.fixedSize()
                 } else { Text("None open").foregroundStyle(.secondary) }
             }.font(.callout)
             Spacer(minLength: 8)
@@ -101,9 +100,11 @@ struct WorkspaceFilingBar: View {
                 Text(m.active.root.isEmpty ? "Choose a destination in Profile Settings" : m.active.root)
                     .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                     .instantHelp(m.active.root.isEmpty ? "Choose a destination root in Profile Settings." : m.active.root)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Button { m.openLibraryInFinder() } label: { Image(systemName: "folder.badge.gearshape") }
+            }
+            Button("Show Library in Finder", systemImage: "folder") { m.openLibraryInFinder() }
+                .fixedSize()
                 .disabled(m.active.root.isEmpty).accessibilityLabel("Show Library in Finder").instantHelp("Show Library in Finder")
+            Spacer(minLength: 8)
             Divider().frame(height: 34)
             VStack(alignment: .trailing, spacing: 8) {
                 HStack(spacing: 12) {

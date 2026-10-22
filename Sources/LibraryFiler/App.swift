@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var body: some Scene {
         WindowGroup(AppIdentity.name) { MainView().environmentObject(model).frame(minWidth: 1100, minHeight: 700) }
             .defaultSize(width: 1320, height: 850)
+            .windowStyle(.hiddenTitleBar)
             .windowToolbarStyle(.unified)
             .commands {
                 CommandGroup(replacing: .appInfo) {
@@ -577,7 +578,7 @@ struct MainView: View {
                         }.padding(24).allowsHitTesting(false)
                     }
                 }.frame(minWidth: 600, maxWidth: .infinity)
-                FieldEditor().frame(minWidth: 280, idealWidth: 340, maxWidth: 400)
+                FieldEditor().frame(minWidth: 280, idealWidth: 340, maxWidth: .infinity)
                     .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
             }
             Divider()
@@ -590,9 +591,9 @@ struct MainView: View {
         .disabled(m.busy || showSplash)
         .toolbar {
             UnsharedToolbarItem(placement: .navigation) { WorkspaceBrand().disabled(m.busy || showSplash) }
-            UnsharedToolbarItem(placement: .principal) { WorkspaceProfilePicker().environmentObject(m).disabled(m.busy || showSplash) }
             UnsharedToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
+                    WorkspaceProfilePicker().environmentObject(m)
                     Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
                         .labelStyle(.iconOnly).instantHelp("Profile Settings")
                     Button { m.showGeneralSettings = true } label: { Label("General Settings", systemImage: "slider.horizontal.3") }
