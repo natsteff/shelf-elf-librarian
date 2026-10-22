@@ -33,7 +33,7 @@ public enum Magic {
         let original = url.deletingPathExtension().lastPathComponent
         let basic = Names.basicInterpret(url, p)
         var suggestions: [Interpretation] = []
-        func add(_ label: String, _ input: Fields, _ why: String, _ strength: String) { var f = input; if p.kind == .audiobook && !f.bookTitle.isEmpty { f.title = f.bookTitle }; Names.enrichYearAndRecording(&f, profile: p); if !suggestions.contains(where: { $0.fields == f }) { suggestions.append(Interpretation(label: label, fields: f, evidence: why, confidence: strength)) } }
+        func add(_ label: String, _ input: Fields, _ why: String, _ strength: String) { var f = input; f.artist = RuleEngine.artistName(f.artist, profile: p); if p.kind == .audiobook && !f.bookTitle.isEmpty { f.title = f.bookTitle }; Names.enrichYearAndRecording(&f, profile: p); if !suggestions.contains(where: { $0.fields == f }) { suggestions.append(Interpretation(label: label, fields: f, evidence: why, confidence: strength)) } }
         // Remembered examples are scoped to one profile and must be explicitly opted in.
         let remembered = memories.filter { $0.profileID == p.id && $0.remember && $0.settingsSignature == Learning.settingsSignature(p) && $0.sourceParentPath == url.deletingLastPathComponent().path && $0.original == url.lastPathComponent }
         for example in remembered {

@@ -88,8 +88,9 @@ public enum Names {
         return basicInterpret(url, p, record: record)
     }
     public static func basicInterpret(_ url: URL, _ p: Profile, record: ((String) -> Void)? = nil) -> (Fields, String, Bool) {
-        if p.workspacePatterns != nil { return PatternEngine.interpret(url, profile: p, record: record) }
-        return legacyInterpret(url, p, record: record)
+        let result = p.workspacePatterns != nil ? PatternEngine.interpret(url, profile: p, record: record) : legacyInterpret(url, p, record: record)
+        var fields = result.0; fields.artist = RuleEngine.artistName(fields.artist, profile: p)
+        return (fields, result.1, result.2)
     }
     public static func legacyInterpret(_ url: URL, _ p: Profile, record: ((String) -> Void)? = nil) -> (Fields, String, Bool) {
         let original = url.deletingPathExtension().lastPathComponent
@@ -168,6 +169,7 @@ public enum Names {
         return clean(value, fieldProfile, record: record)
     }
     public static func render(_ mask: String, fields f: Fields, profile p: Profile, source: URL, folder: Bool) throws -> String {
+        var f = f; f.artist = RuleEngine.artistName(f.artist, profile: p)
         let isEpisode = p.kind == .video && !f.season.isEmpty && !f.episode.isEmpty
         var title = p.kind == .audiobook && !f.bookTitle.isEmpty ? f.bookTitle : f.title
         if isEpisode {
@@ -305,7 +307,7 @@ public func makePlan(items: [Item], profile p: Profile, mode: Mode, category: St
         do { _ = try Directory(p.root) } catch { throw fail("Library destination is unavailable: \(p.root). Reconnect it using Choose Destination Root in Profile Settings. \(error.localizedDescription)") }
     }
     let root = try Directory(mode == .clean ? items[0].url.deletingLastPathComponent().path : p.root)
-    if mode != .clean, let identity = p.rootIdentity { guard root.device == identity.device, root.inode == identity.inode else { throw fail("Configured root identity changed. Reconnect in Settings; no automatic redirection.") } }
+    if mode != .clean, let identity = p.rootIdentity { guard root.device == identity.device, root.inode == identity.inode else { throw fail("The library folder at \(p.root) has been replaced. The path is still configured, but it now refers to a different folder. Preview again to confirm Use This Folder, or reselect it in Profile Settings.") } }
     var rows: [PlanRow] = []
     for item in items {
         var row = PlanRow(source: item.url.path, destination: "", status: "Needs review", explanation: item.evidence, group: item.fields.bookTitle)

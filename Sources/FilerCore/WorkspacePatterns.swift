@@ -211,6 +211,7 @@ public enum PatternEngine {
             var warning = yearCandidates > 1 && p.kind == .video ? " Multiple possible years; review Year rather than choosing automatically." : ""
             if let known = lookup(captured, profile: p) { FieldCatalog.set(key, known.name, &f) }
             else if !captured.isEmpty { warning = " Unrecognized \(key): \(captured); choose or add a value before filing." }
+            f.artist = RuleEngine.artistName(f.artist, profile: p)
             Names.enrichYearAndRecording(&f, profile: p)
             record?("Workspace pattern \(index + 1)")
             return (f, "Pattern \(index + 1): \(rule.pattern)." + warning, false)

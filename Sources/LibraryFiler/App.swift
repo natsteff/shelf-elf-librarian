@@ -334,7 +334,7 @@ struct WorkspaceSession: Codable {
         busy = true; status = "Discovering eligible files…"; progress = "Scanning"; invalidate()
         Task { do { let r = try await Task.detached { try scan(root, profile: p, recursive: recurse, cancel: token) }.value; items = r.items.map { var item = $0; item.rememberCorrection = p.rememberCorrectionsByDefault ?? true; return item }; excluded = r.excluded; selected = []; status = "\(items.count.formatted()) eligible • \(excluded.count.formatted()) excluded" } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
     }
-    func updateFields(_ edit: (inout Fields) -> Void) { for i in items.indices where selected.contains(items[i].id) && visible.contains(where: { $0.id == items[i].id }) { edit(&items[i].fields); items[i].overrideBasename = nil; items[i].reviewed = false }; invalidate() }
+    func updateFields(_ edit: (inout Fields) -> Void) { for i in items.indices where selected.contains(items[i].id) && visible.contains(where: { $0.id == items[i].id }) { edit(&items[i].fields); items[i].fields.artist = RuleEngine.artistName(items[i].fields.artist, profile: active); items[i].overrideBasename = nil; items[i].reviewed = false }; invalidate() }
     func selectRow(_ id: String) { selected = [id]; invalidate() }
     func confirmFields() { for i in items.indices where visibleSelected.contains(where: { $0.id == items[i].id }) { items[i].reviewed = true }; invalidate() }
     func preview(_ clean: Bool) {
@@ -343,12 +343,12 @@ struct WorkspaceSession: Codable {
         p.rootAllowed = true
         let chosen = visibleSelected, operation: Mode = clean ? .clean : mode, cat = p.fixedCategory
         guard !chosen.isEmpty else { error = "Select eligible visible files first."; return }
-        if !clean && !checkLibraryDestination(p) { return }
+        if !clean && !checkLibraryDestination(p, onReconnect: { [weak self] _ in self?.preview(clean) }) { return }
         previewItems = chosen
         busy = true; progress = "Hashing preview sources…"
         Task { do { plan = try await Task.detached { try makePlan(items: chosen, profile: p, mode: operation, category: cat, fileOnly: false) }.value; showReview = true } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
     }
-    func checkLibraryDestination(_ profile: Profile) -> Bool {
+    func checkLibraryDestination(_ profile: Profile, onReconnect: @escaping (Profile) -> Void = { _ in }) -> Bool {
         if profile.root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let alert = NSAlert(); alert.messageText = "Library destination not configured"
             alert.informativeText = "Choose a destination folder in Profile Settings → Profile & destination → Choose Destination Root before copying or moving files."
@@ -358,7 +358,29 @@ struct WorkspaceSession: Codable {
         }
         do {
             guard profile.root.hasPrefix("/"), !profile.root.contains("//"), !profile.root.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw fail("The library destination is not a valid absolute folder path.") }
-            _ = try Directory(profile.root)
+            let directory = try Directory(profile.root)
+            if let identity = profile.rootIdentity, identity.device != directory.device || identity.inode != directory.inode {
+                let replacement = DirectoryIdentity(device: directory.device, inode: directory.inode)
+                let alert = NSAlert(); alert.messageText = "Library folder has been replaced"
+                alert.informativeText = "The path is still configured, but it now refers to a different folder:\n\n" + profile.root + "\n\nUse this folder as this profile’s library? The preview will be rebuilt before any files are processed."
+                alert.addButton(withTitle: "Use This Folder"); alert.addButton(withTitle: "Cancel")
+                WindowPresentation.confirm(alert) { [weak self] response in
+                    guard let self, response == .alertFirstButtonReturn else { return }
+                    do {
+                        let current = try Directory(profile.root)
+                        guard current.device == replacement.device, current.inode == replacement.inode else { throw fail("The library folder changed again. Preview again to confirm the current folder.") }
+                        guard let i = self.profiles.firstIndex(where: { $0.id == profile.id }), self.profiles[i].root == profile.root, self.profiles[i].rootIdentity == profile.rootIdentity else { throw fail("The profile’s library setting changed. Preview again using the current settings.") }
+                        let bookmark = try URL(fileURLWithPath: profile.root).bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+                        var next = self.profiles
+                        next[i].rootIdentity = replacement; next[i].bookmark = bookmark
+                        try ProfileSettingsStore.write(next, to: self.support.appendingPathComponent("profiles.json"))
+                        self.profiles = next; self.invalidate()
+                        var rebound = profile; rebound.rootIdentity = replacement; rebound.bookmark = bookmark
+                        onReconnect(rebound)
+                    } catch { self.error = "Library folder was not reconnected. " + error.localizedDescription }
+                }
+                return false
+            }
             return true
         } catch { self.error = "Library destination unavailable: \(profile.root). Reconnect it in Profile Settings → Choose Destination Root. \(error.localizedDescription)"; return false }
     }
@@ -372,13 +394,15 @@ struct WorkspaceSession: Codable {
         pendingSkipFiling = false; rebuildQuickFiling(quickMode)
     }
     func beginQuickFiling(_ chosen: [Item], profile: Profile, mode: Mode, keepNames: Bool) {
-        guard !chosen.isEmpty, checkLibraryDestination(profile) else { return }
+        guard !chosen.isEmpty, checkLibraryDestination(profile, onReconnect: { [weak self] rebound in self?.beginQuickFiling(chosen, profile: rebound, mode: mode, keepNames: keepNames) }) else { return }
         quickItems = chosen; quickProfile = profile; quickMode = mode; quickKeepNames = keepNames
         rebuildQuickFiling(mode)
     }
     func rebuildQuickFiling(_ mode: Mode) {
         guard !busy, let profile = quickProfile else { return }
         let chosen = quickItems, keepNames = quickKeepNames
+        quickPlan = nil; quickFailure = "Confirm the replacement library folder to rebuild this preview."
+        guard checkLibraryDestination(profile, onReconnect: { [weak self] rebound in self?.quickProfile = rebound; self?.rebuildQuickFiling(mode) }) else { return }
         quickPlan = nil; quickFailure = nil; busy = true; progress = "Checking library destinations…"
         Task {
             do {
@@ -395,12 +419,50 @@ struct WorkspaceSession: Codable {
         plan = confirmed; quickPlan = nil; apply()
     }
     func apply() {
-        guard let p = plan else { return }; busy = true; showReview = false; showQuickFiling = false; cancellation = Cancellation(); let token = cancellation; let db = support.appendingPathComponent("operations.sqlite")
-        Task { do {
-            let r = try await Task.detached { let j = try Journal(url: db); return try Executor(journal: j).execute(p, cancel: token) { done, total in Task { @MainActor in self.progress = "\(done.formatted()) / \(total.formatted()) files" } } }.value
-            status = "\(r.completed) completed • \(r.failed) failed. \(token.cancelled ? "Cancelled; completed items remain completed." : "")"
-            if !r.details.isEmpty { error = r.details.joined(separator: "\n\n") }
-        } catch { self.error = error.localizedDescription }; busy = false; progress = ""; plan = nil; categoryConfirmed = false; loadHistory() }
+        guard let p = plan, !busy else { return }
+        let reviewWasVisible = showReview
+        if p.mode != .clean && !checkLibraryDestination(p.profile, onReconnect: { [weak self] rebound in
+            guard let self else { return }
+            let sources = Set(p.rows.map(\.source))
+            self.quickItems = self.items.filter { sources.contains($0.id) }
+            self.quickProfile = rebound; self.quickMode = p.mode; self.quickKeepNames = p.fileOnly
+            if reviewWasVisible { self.pendingSkipFiling = true; self.showReview = false }
+            else { self.rebuildQuickFiling(p.mode) }
+        }) { return }
+        busy = true; showReview = false; showQuickFiling = false
+        cancellation = Cancellation(); let token = cancellation
+        let db = support.appendingPathComponent("operations.sqlite")
+        Task {
+            var summary = "Operation stopped. Review History for details."
+            do {
+                let r = try await Task.detached {
+                    let j = try Journal(url: db)
+                    return try Executor(journal: j).execute(p, cancel: token) { done, total in Task { @MainActor in self.progress = "\(done.formatted()) / \(total.formatted()) files" } }
+                }.value
+                summary = "\(r.completed) completed • \(r.failed) failed. \(token.cancelled ? "Cancelled; completed items remain completed." : "")"
+                if !r.details.isEmpty { error = r.details.joined(separator: "\n\n") }
+            } catch { self.error = error.localizedDescription }
+            let completed: Set<String>
+            do { completed = OperationPresentation.completedSources(plan: p, events: try Journal(url: db).events()) }
+            catch { completed = []; self.error = "Could not read operation completion details. Review History. " + error.localizedDescription }
+            selected.subtract(completed)
+            if p.mode == .move {
+                let existing = items, remainingSelection = selected
+                items.removeAll { completed.contains($0.id) }
+                if let root = workspace {
+                    let profile = active, recurse = recursive
+                    let refreshToken = Cancellation(); cancellation = refreshToken
+                    progress = "Refreshing workspace…"
+                    do {
+                        let fresh = try await Task.detached { try scan(root, profile: profile, recursive: recurse, cancel: refreshToken) }.value
+                        let updated = OperationPresentation.reconcile(existing: existing, scanned: fresh.items, selected: remainingSelection, completed: completed, rememberNew: profile.rememberCorrectionsByDefault ?? true)
+                        items = updated.items; selected = updated.selected; excluded = fresh.excluded
+                        let ids = Set(items.map(\.id)); directRenameUndo = directRenameUndo.filter { ids.contains($0.key) }
+                    } catch { self.error = "Workspace refresh was incomplete. Click Refresh to reload it. " + error.localizedDescription }
+                }
+            }
+            status = summary; busy = false; progress = ""; plan = nil; quickPlan = nil; categoryConfirmed = false; loadHistory()
+        }
     }
     func loadHistory() {
         do {
@@ -446,7 +508,7 @@ struct WorkspaceSession: Codable {
     func analyzeMagic() {
         guard !busy, active.rules.useMagic, !visibleSelected.isEmpty else { return }
         let chosen = visibleSelected, profile = active, memory = observations, operation = mode
-        guard checkLibraryDestination(profile) else { return }
+        guard checkLibraryDestination(profile, onReconnect: { [weak self] _ in self?.analyzeMagic() }) else { return }
         cancellation = Cancellation(); let token = cancellation
         busy = true; progress = "Analyzing with Magic…"; invalidate()
         Task {
@@ -727,7 +789,7 @@ struct MainView: View {
 }
 struct OperationStatusBar: View {
     @EnvironmentObject var m: Model
-    private var scanning: Bool { m.progress == "Scanning" || m.progress == "Restoring workspace…" }
+    private var scanning: Bool { m.progress == "Scanning" || m.progress == "Restoring workspace…" || m.progress == "Refreshing workspace…" }
     var body: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
@@ -933,15 +995,7 @@ struct ReviewView: View {
             if let plan = m.plan {
                 Text("Review \(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) Operation").font(.title2.bold())
                 Text("\(plan.profile.name) • \(plan.mode == .clean ? "Workspace folders" : plan.profile.root) • file contents remain unchanged").foregroundStyle(.secondary).textSelection(.enabled)
-                ScrollView { LazyVStack(alignment: .leading, spacing: 12) { ForEach(plan.rows) { r in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack { Toggle(r.status, isOn: Binding(get: { included.contains(r.id) }, set: { if $0 { included.insert(r.id) } else { included.remove(r.id) } })).disabled(!r.actionable); Spacer(); if !r.group.isEmpty { Text("Group: \(r.group)").font(.caption) } }
-                        Text("Source: \(r.source)")
-                        Text("Destination: \(r.destination)").fontWeight(.medium)
-                        if !r.newFolders.isEmpty { Text("New folders (created only on Apply):\n" + r.newFolders.joined(separator: "\n")).foregroundStyle(.blue) }
-                        Text(r.explanation).font(.caption).foregroundStyle(.secondary)
-                    }.textSelection(.enabled).padding().frame(maxWidth: .infinity, alignment: .leading).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-                } } }
+                GroupedPlanRows(plan: plan, included: $included)
                 Text("Cancellation stops between files. Completed files remain completed. A group may be partially completed; inspect History for recovery.").font(.caption)
                 HStack { Button("Back") { m.showReview = false }; if plan.mode != .clean { Button("Skip Individual Review & \(plan.mode == .copy ? "Copy" : "Move") All…") { m.skipReviewAndFile() } }; Spacer(); Button("\(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) \(included.count) files") { var p = plan; p.rows = plan.rows.filter { included.contains($0.id) }; m.plan = p; m.apply() }.buttonStyle(.borderedProminent).disabled(included.isEmpty) }
             }

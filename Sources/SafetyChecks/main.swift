@@ -46,6 +46,61 @@ final class FilerCoreTests {
     }
     func plan(_ items: [Item], _ mode: Mode = .copy) throws -> Plan { try makePlan(items: items, profile: p, mode: mode, category: "Reports", fileOnly: false) }
     func executor() throws -> Executor { try Executor(journal: Journal(url: base.appendingPathComponent("journal.sqlite"))) }
+    func testGroupedDestinations() throws {
+        let a = try item("Episode10.pdf"), b = try item("Episode2.pdf"), c = try item("Movie.pdf")
+        var q = try plan([a, b, c]); q.rows[0].destination = library.path + "/TV Shows/Season 01/Episode10.pdf"
+        q.rows[1].destination = library.path + "/TV Shows/Season 01/Episode2.pdf"
+        q.rows[2].destination = library.path + "/Movies/Movie.pdf"
+        var blocked = q.rows[0]; blocked.id = UUID(); blocked.status = "Needs review"; blocked.destination = ""; q.rows.append(blocked)
+        let groups = OperationPresentation.groups(q)
+        XCTAssertEqual(groups.map(\.title), ["Movies", "TV Shows / Season 01", "Needs attention"])
+        XCTAssertEqual(groups[1].rows.map(\.source), [b.id, a.id]); XCTAssertTrue(groups[2].blocked)
+        XCTAssertEqual(Set(groups.flatMap(\.rows).map(\.id)), Set(q.rows.map(\.id)))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.path + "/TV Shows"))
+    }
+    func testMoveCompletionAndRefresh() throws {
+        let a = try item("a.pdf"); var b = try item("b.pdf"); b.overrideBasename = "My edited name"; b.reviewed = false
+        var reviewedB = b; reviewedB.reviewed = true
+        let q = try plan([a, reviewedB], .move), e = try executor(), token = Cancellation()
+        _ = try e.execute(q, cancel: token) { _, _ in token.cancel() }
+        let done = OperationPresentation.completedSources(plan: q, events: try e.journal.events())
+        XCTAssertEqual(done, Set([a.id]))
+        let fresh = try scan(src, profile: p, recursive: false)
+        let updated = OperationPresentation.reconcile(existing: [a, b], scanned: fresh.items, selected: Set([a.id, b.id]), completed: done, rememberNew: false)
+        XCTAssertEqual(updated.selected, Set([b.id])); XCTAssertEqual(updated.items.count, 1)
+        XCTAssertEqual(updated.items[0].overrideBasename, "My edited name"); XCTAssertFalse(updated.items[0].reviewed)
+        let copy = try plan([try item("failed.pdf")]); _ = try e.execute(copy, fault: .afterPublish)
+        XCTAssertTrue(OperationPresentation.completedSources(plan: copy, events: try e.journal.events()).isEmpty)
+    }
+    func testReplacementRootRepreview() throws {
+        let i = try item(); let original = try Directory(library.path)
+        p.rootIdentity = DirectoryIdentity(device: original.device, inode: original.inode)
+        try FileManager.default.moveItem(at: library, to: base.appendingPathComponent("OldLibrary"))
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try plan([i]))
+        let replacement = try Directory(library.path)
+        p.rootIdentity = DirectoryIdentity(device: replacement.device, inode: replacement.inode)
+        let q = try plan([i]); XCTAssertTrue(FileManager.default.fileExists(atPath: i.id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: q.rows[0].destination))
+        try FileManager.default.moveItem(at: library, to: base.appendingPathComponent("SecondLibrary"))
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        XCTAssertEqual(try executor().execute(q).failed, 1); XCTAssertTrue(FileManager.default.fileExists(atPath: i.id))
+    }
+    func testArtistTheToEnd() throws {
+        var music = Profile(.music)
+        XCTAssertEqual(RuleEngine.artistName("The Beatles", profile: music), "The Beatles")
+        XCTAssertFalse(music.rules.ignoreLeadingThe); music.rules.artistTheToEnd = true
+        for (input, expected) in [("The Beatles", "Beatles, The"), ("the 1975", "1975, The"), ("Theocracy", "Theocracy"), ("The", "The"), ("Beatles, The", "Beatles, The")] {
+            XCTAssertEqual(RuleEngine.artistName(input, profile: music), expected)
+        }
+        let url = src.appendingPathComponent("The Beatles - Yesterday.mp3")
+        let fields = Names.basicInterpret(url, music).0
+        XCTAssertEqual(fields.artist, "Beatles, The")
+        XCTAssertEqual(try Names.render("{Artist}", fields: fields, profile: music, source: url, folder: true), "Beatles, The")
+        var video = Profile(.video); video.rules.artistTheToEnd = true
+        XCTAssertEqual(RuleEngine.artistName("The Beatles", profile: video), "The Beatles")
+        XCTAssertEqual(UniversalExceptionGroup.all.first { $0.id == "other" }?.examples, "LaTeX, myCustomName, iMonkey")
+    }
     func testCopyAndGuardedUndo() throws {
         let i = try item(), original = try Data(contentsOf: i.url); let q = try plan([i]); let e = try executor()
         XCTAssertEqual(try e.execute(q).completed, 1)
@@ -1159,4 +1214,8 @@ do { try suite.setUpWithError(); try suite.testMediaCategoryPriorityAndCapture()
 do { try suite.setUpWithError(); try suite.testMediaCategorySafetyAndArchives(); try suite.tearDownWithError(); print("Checked category guards, collisions, archives and legacy settings") } catch { failures += 1; print("FAIL testMediaCategorySafetyAndArchives: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testVideoCategoryCompatibilityAndPersistence(); try suite.tearDownWithError(); print("Checked video compatibility repair, persisted mappings and failed-write propagation") } catch { failures += 1; print("FAIL testVideoCategoryCompatibilityAndPersistence: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testUnmatchedVideoLibraryRoot(); try suite.tearDownWithError(); print("Checked unmatched Library Root fallback and explicit-category guards") } catch { failures += 1; print("FAIL testUnmatchedVideoLibraryRoot: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 57 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testGroupedDestinations(); try suite.tearDownWithError(); print("Checked testGroupedDestinations") } catch { failures += 1; print("FAIL testGroupedDestinations: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testMoveCompletionAndRefresh(); try suite.tearDownWithError(); print("Checked testMoveCompletionAndRefresh") } catch { failures += 1; print("FAIL testMoveCompletionAndRefresh: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testReplacementRootRepreview(); try suite.tearDownWithError(); print("Checked testReplacementRootRepreview") } catch { failures += 1; print("FAIL testReplacementRootRepreview: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testArtistTheToEnd(); try suite.tearDownWithError(); print("Checked testArtistTheToEnd") } catch { failures += 1; print("FAIL testArtistTheToEnd: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 61 fixture scenarios"); exit(failures == 0 ? 0 : 1)

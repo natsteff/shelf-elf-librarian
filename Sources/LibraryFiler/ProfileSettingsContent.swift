@@ -187,11 +187,8 @@ struct ProfileSettingsContent: View {
         }
         Section("4. Build names & folders") {
             if profile.kind == .video {
-                DisclosureGroup("Media Categories — map videos to your library folders") {
-                    MediaCategorySettings(profile: $profile, validation: $validation)
-                        .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
-                }
-                SettingsHint(text: "Optional Media Categories choose the destination branch. Layouts below remain the Type/fallback defaults; category-specific layouts can override them. Existing routing is preserved until you enable Media Categories.")
+                MediaCategorySettings(profile: $profile, validation: $validation)
+                    .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
                 videoTypeLayout("Movie")
                 videoTypeLayout("TV Show")
                 EpisodeFormattingSettings(rules: Binding(get: { profile.rules }, set: { profile.rules = $0 }))
@@ -207,6 +204,8 @@ struct ProfileSettingsContent: View {
                 TextField("Number bucket", text: Binding(get: { profile.rules.numericBucket }, set: { var r = profile.rules; r.numericBucket = $0; profile.rules = r }))
                 TextField("Symbol bucket", text: Binding(get: { profile.rules.symbolBucket }, set: { var r = profile.rules; r.symbolBucket = $0; profile.rules = r }))
                 Toggle("Ignore leading The for bucket only", isOn: Binding(get: { profile.rules.ignoreLeadingThe }, set: { var r = profile.rules; r.ignoreLeadingThe = $0; profile.rules = r }))
+                Toggle("Move leading “The” to end of artist name", isOn: Binding(get: { profile.rules.artistTheToEnd ?? false }, set: { var r = profile.rules; r.artistTheToEnd = $0; profile.rules = r }))
+                SettingsHint(text: "The Beatles → Beatles, The. Changes the Artist component used in proposed names, folders and buckets. Embedded tags remain unchanged. Independent of Ignore leading The for bucket only; both options default off.")
             }
             if profile.kind != .video && profile.supportsEpisodes { DisclosureGroup("Optional episode formatting") { EpisodeFormattingSettings(rules: Binding(get: { profile.rules }, set: { profile.rules = $0 })) } }
             DisclosureGroup("Components & mask reference") {

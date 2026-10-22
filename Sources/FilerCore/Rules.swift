@@ -34,6 +34,7 @@ public struct PreparationRules: Codable, Equatable {
     public var numericBucket = "0-9"
     public var symbolBucket = "#"
     public var ignoreLeadingThe = false
+    public var artistTheToEnd: Bool?
     public var replacements: [ReplacementRule] = []
     public var useMagic = false
     public init() {}
@@ -153,6 +154,13 @@ public enum RuleEngine {
         let restored = protected.restore(text)
         if restored != text && restored != value { applied.append("Universal preferred spelling and punctuation") }
         return (restored, applied)
+    }
+    public static func artistName(_ artist: String, profile: Profile) -> String {
+        guard profile.kind == .music, profile.rules.artistTheToEnd == true else { return artist }
+        let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let re = try? NSRegularExpression(pattern: #"(?i)^the\s+(.+)$"#), let match = re.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) else { return artist }
+        let name = (trimmed as NSString).substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? artist : name + ", The"
     }
     public static func bucket(artist: String, profile: Profile) -> String {
         guard profile.bucket else { return "" }

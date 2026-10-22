@@ -10,7 +10,7 @@ public struct UniversalExceptionGroup: Identifiable {
         .init(id: "brands", title: "Brands, products & platforms", examples: "iPhone, macOS, GitHub, PlayStation, NES"),
         .init(id: "formats", title: "Formats & technical terms", examples: "1080p, HDR, UHD, FLAC, PDF, EPUB, Wi-Fi"),
         .init(id: "editions", title: "Editions, regions & identifiers", examples: "USA, UK, PAL, NTSC, DLC, GOTY"),
-        .init(id: "other", title: "Other preferred spellings", examples: "BT-AI, MarsX, NADIR")
+        .init(id: "other", title: "Other preferred spellings", examples: "LaTeX, myCustomName, iMonkey")
     ]
 }
 public enum HoverTiming: String, Codable, CaseIterable { case immediate, shortDelay, off }

@@ -22,7 +22,9 @@ struct MediaCategorySettings: View {
         Binding(get: { profile.unmatchedMediaUseLibraryRoot == true ? "@root" : (profile.defaultMediaCategoryID?.uuidString ?? "") }, set: { value in profile.unmatchedMediaUseLibraryRoot = value == "@root"; profile.defaultMediaCategoryID = UUID(uuidString: value) })
     }
     var body: some View {
+        Group {
         Toggle("Sort videos into Media Category folders", isOn: Binding(get: { profile.mediaRoutingEnabled ?? false }, set: { profile.mediaRoutingEnabled = $0 }))
+        if profile.mediaRoutingEnabled == true {
         SettingsHint(text: "Choose the library folder for each category. Existing folders are reused; missing folders are created only when a filing operation is applied.")
         HStack {
             Text("Media Category").frame(width: 125, alignment: .leading)
@@ -59,6 +61,8 @@ struct MediaCategorySettings: View {
             Text("Use Library Root").tag("@root")
         }
         SettingsHint(text: "Starter categories already include recognition and naming defaults. Use Advanced only to customize them. Removing a category never deletes library folders or files.")
+        }
+        }
             .onAppear { if profile.mediaCategories == nil { profile.mediaCategories = MediaRouting.starters } }
             .sheet(item: $editor) { selection in
                 switch selection {
