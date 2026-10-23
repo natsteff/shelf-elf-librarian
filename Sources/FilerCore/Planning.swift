@@ -83,7 +83,7 @@ public enum Names {
         return basicInterpret(url, p, record: record)
     }
     public static func basicInterpret(_ url: URL, _ p: Profile, record: ((String) -> Void)? = nil) -> (Fields, String, Bool) {
-        let result = p.workspacePatterns != nil ? PatternEngine.interpret(url, profile: p, record: record) : legacyInterpret(url, p, record: record)
+        let result = MediaFilenameParser.supports(p) ? MediaFilenameParser.interpret(url, profile: p, record: record) : p.workspacePatterns != nil ? PatternEngine.interpret(url, profile: p, record: record) : legacyInterpret(url, p, record: record)
         var fields = result.0; fields.artist = RuleEngine.artistName(fields.artist, profile: p)
         return (fields, result.1, result.2)
     }
@@ -159,7 +159,7 @@ public enum Names {
         values.merge(["Series": f.series, "Season": f.season, "Episode": f.episode, "EpisodeTitle": f.episodeTitle, "Date": f.date, "Revision": f.revision, "EpisodeID": ""]) { _, new in new }
         for key in PatternEngine.customComponents(p) { values[key] = f.custom?[key] ?? "" }
         values.merge(FieldCatalog.values(f)) { old, _ in old }
-        values["Resolution"] = FieldCatalog.normalizedResolution(f.resolution)
+        values["Resolution"] = VideoResolution.display(FieldCatalog.normalizedResolution(f.resolution), profile: p)
         values["BookFolder"] = (f.seriesNumber.isEmpty ? "" : f.seriesNumber + " - ") + (f.bookTitle.isEmpty ? f.title : f.bookTitle)
         values.merge(["Narrator": f.narrator, "Publisher": f.publisher, "Illustrator": f.illustrator, "IssueNumber": f.issueNumber, "Volume": f.volume, "SeriesNumber": f.seriesNumber, "TrackNumber": f.trackNumber, "RecordingType": f.recordingType, "Live": f.recordingType.caseInsensitiveCompare("Live") == .orderedSame ? "(Live)" : ""]) { _, new in new }
         if let number = Int(f.trackNumber), number >= 0 { values["TrackNumber:02"] = String(format: "%02d", number) }

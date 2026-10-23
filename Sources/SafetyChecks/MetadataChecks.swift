@@ -111,7 +111,7 @@ extension FilerCoreTests {
         let enriched = metadata.fillingVideoFields(fields, profile: video, source: src.appendingPathComponent("file.mp4"))
         XCTAssertEqual(enriched.0.series, "Filename Show"); XCTAssertEqual(enriched.0.season, "2"); XCTAssertEqual(enriched.0.episode, "3")
         XCTAssertEqual(enriched.0.episodeTitle, "Tagged episode"); XCTAssertEqual(enriched.0.year, "2024"); XCTAssertEqual(enriched.0.genre, "")
-        XCTAssertEqual(enriched.0.resolution, "1920x1080")
+        XCTAssertEqual(enriched.0.resolution, "1080p")
         var conflict = metadata; conflict.tags.append(.init(key: "otherYear", label: "Year", value: "2001", component: "Year", source: "Fixture"))
         XCTAssertEqual(conflict.fillingVideoFields(fields, profile: video, source: src).0.year, "")
         video.filenameMask = "{Title}"; video.folderMask = ""
@@ -181,7 +181,7 @@ extension FilerCoreTests {
         var video = Profile(.video); video.filenameMask = "{Title} ({Year?}) [{Resolution?}]"
         let scan = try await scanMedia(src, profile: video, recursive: false)
         XCTAssertEqual(scan.items.count, 1); XCTAssertEqual(scan.items[0].fields.title, "Filename Movie")
-        XCTAssertEqual(scan.items[0].fields.year, "2024"); XCTAssertEqual(scan.items[0].fields.resolution, "16x16")
+        XCTAssertEqual(scan.items[0].fields.year, "2024"); XCTAssertEqual(scan.items[0].fields.resolution, "480p")
         video.folderMask = "{Series}/Season {Season:02}"; video.filenameMask = "{Series} - {EpisodeID} - {EpisodeTitle}"
         let episodeScan = try await scanMedia(src, profile: video, recursive: false)
         XCTAssertEqual(episodeScan.items[0].fields.series, "Embedded Series")

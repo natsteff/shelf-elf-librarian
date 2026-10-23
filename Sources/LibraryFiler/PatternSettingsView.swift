@@ -31,7 +31,7 @@ struct PatternSettingsView: View {
             var preparation = draft.rules; preparation.smallWords = m.universalPreferences.titleWords; draft.rules = preparation
             try PatternEngine.validate(draft)
             results = urls.prefix(25).map { url in
-                let result = PatternEngine.interpret(url, profile: draft)
+                let result = Names.basicInterpret(url, draft)
                 let values = FieldCatalog.values(result.0).filter { !$0.value.isEmpty }.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: " · ")
                 let filename = (try? proposedFilename(Item(url: url, size: 0, fields: result.0, evidence: "", reviewed: false), profile: draft)) ?? "[Missing filename components]"
                 let folder = (try? Names.render(PatternEngine.folderMask(for: result.0, profile: draft), fields: result.0, profile: draft, source: url, folder: true)) ?? "[Missing folder components]"
@@ -43,10 +43,11 @@ struct PatternSettingsView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Workspace Filename Patterns & Filing Types").font(.title2.bold())
+            Text(MediaFilenameParser.supports(profile) ? "Filing Types & Layouts" : "Workspace Filename Patterns & Filing Types").font(.title2.bold())
             Text("Changes are part of the profile draft. Save Profile Settings to apply them.").font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if !MediaFilenameParser.supports(profile) {
                     Text("Input patterns · first enabled match wins").font(.headline)
                     Text("Match the entire filename without its extension. Braces capture a component; all other text is literal. Example: Commercial - {Title} ({Year}). [{Type}] reads a value inside brackets. {EpisodeID} understands S01E02. Specific patterns should precede broad patterns such as {Title}.").font(.caption)
                     ForEach(rules) { $rule in
@@ -85,6 +86,7 @@ struct PatternSettingsView: View {
                         Button("Add Pattern") { rules.wrappedValue.append(WorkspacePattern("{Title}")) }
                         Button("Add Suggested Patterns Before Existing Rules") { addDefaults() }
                     }
+                    } else { Text("Filename components are read by the built-in " + profile.kind.label + " parser. Input patterns cannot override it. Configure output layouts below.").font(.callout) }
                     if profile.kind == .roms { ROMSettings(profile: $profile) }
                     Text(profile.kind == .roms ? "Systems & library folders" : "Types & filing layouts").font(.headline)
                     Picker("Classification component", selection: Binding(get: { PatternEngine.classificationKey(profile) }, set: { profile.classificationComponent = $0 })) {

@@ -231,10 +231,11 @@ struct WorkspaceSession: Codable {
             let profilesURL = support.appendingPathComponent("profiles.json")
             if FileManager.default.fileExists(atPath: profilesURL.path) { profiles = try ProfileSettingsStore.read(from: profilesURL) }
             else { profiles = ProfileSetup.starterProfiles; try ProfileSettingsStore.write(profiles, to: profilesURL) }
-            if profiles.contains(where: { $0.schemaVersion < 2 }) {
+            let migratedProfiles = try profiles.map { try ProfileSetup.migrate($0) }
+            if migratedProfiles != profiles {
                 let backup = support.appendingPathComponent("Settings before pattern migration-\(UUID().uuidString).json")
                 try JSONEncoder().encode(SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: nil)).write(to: backup, options: .atomic)
-                let migrated = try profiles.map { try ProfileSetup.migrate($0) }
+                let migrated = migratedProfiles
                 try JSONEncoder().encode(migrated).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
                 profiles = migrated
             }

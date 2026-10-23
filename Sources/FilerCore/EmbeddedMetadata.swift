@@ -22,6 +22,9 @@ public struct EmbeddedMetadata: Equatable {
         guard !tag.binary, let key = tag.component else { return "Additional tag information" }
         let current = FieldCatalog.get(key, fields)
         guard !current.isEmpty else { return "Additional tag information" }
+        if video, key == "Resolution", ["480p", "720p", "1080p", "4K", "8K"].contains(current) {
+            return VideoResolution.display(tag.value, profile: Profile(.video)) == current ? "Matches component" : "Differs from component"
+        }
         if key == "Genre", tag.source == "ID3v1" { return ID3Genres.normalized(current).caseInsensitiveCompare(ID3Genres.normalized(tag.value)) == .orderedSame ? "Matches component" : "Differs from component" }
         return Self.comparable(current, key: key) == Self.comparable(tag.value, key: key) ? "Matches component" : "Differs from component"
     }
@@ -65,7 +68,8 @@ public struct EmbeddedMetadata: Equatable {
             if key == "Year", !(Int(value).map { (1900...2100).contains($0) } ?? false) { continue }
             if ["Season", "Episode"].contains(key), !(Int(value).map { (0...9999).contains($0) } ?? false) { continue }
             guard !value.contains("/"), !value.contains(":"), !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { continue }
-            FieldCatalog.set(key, value, &fields); evidence.append(key + " from read-only video metadata: " + value)
+            let displayed = key == "Resolution" ? VideoResolution.display(value, profile: profile) : value
+            FieldCatalog.set(key, displayed, &fields); evidence.append(key + " from read-only video metadata: " + value)
         }
         return (fields, evidence)
     }

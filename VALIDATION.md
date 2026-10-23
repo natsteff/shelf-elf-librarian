@@ -1,8 +1,10 @@
 # Validation scope
 
-The current app is **0.1.0 Alpha (Build 59)**, compiled for arm64 and locally ad hoc signed. The latest build completed with **zero failures across 91 disposable fixture scenarios**. Both the main app and isolated Fresh Install Test edition were packaged and their signatures verified. Native GUI appearance and interactions require manual review.
+The current app is **0.1.0 Alpha (Build 60)**, compiled for arm64 and locally ad hoc signed. The latest build completed with **zero failures across 95 disposable fixture scenarios**. Both the main app and isolated Fresh Install Test edition were packaged and their signatures verified. Native GUI appearance and interactions require manual review.
 
 Build 59 adds coverage for Documents custom capture editing/rendering/persistence, fixed Music/Video capture validation, removed legacy extraction and cleanup behavior, optional audiobook SeriesName, ROM extension routing and original-filename preservation, editable System destinations, ambiguous extensions and linked-disc-set guards. Builds 56–58 also cover bounded MP3/video reading, reviewed tag update/purge, verified audio preservation, optional Magic staging steps and 30-day history retention.
+
+Build 60 adds regressions for Music/Video parsing with nil, empty, obsolete compatibility and misconfigured pattern rows; schema-2 profile repair and persistence; Music Artist/Title/track recognition and Video TV/movie classification; default-on resolution shorthand, portrait/cropped sizes, explicit labels and full-dimension opt-out.
 
 Historical build notes below describe coverage at those points in development; the current behavior is documented in README.md.
 

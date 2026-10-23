@@ -11,7 +11,7 @@ public struct Interpretation: Identifiable, Equatable {
 }
 public enum Magic {
     public static func suggestions(url: URL, profile p: Profile, related: [Item] = [], memories: [ConfirmedCorrection] = []) -> [Interpretation] {
-        if p.workspacePatterns != nil {
+        if p.workspacePatterns != nil && !MediaFilenameParser.supports(p) {
             let result = PatternEngine.interpret(url, profile: p)
             let primary = Interpretation(label: "Workspace pattern", fields: result.0, evidence: result.1, confidence: "Review filename evidence")
             var legacy = p; legacy.workspacePatterns = nil
@@ -33,12 +33,13 @@ public enum Magic {
         let original = url.deletingPathExtension().lastPathComponent
         let basic = Names.basicInterpret(url, p)
         var suggestions: [Interpretation] = []
-        func add(_ label: String, _ input: Fields, _ why: String, _ strength: String) { var f = input; f.artist = RuleEngine.artistName(f.artist, profile: p); if p.kind == .audiobook && !f.bookTitle.isEmpty { f.title = f.bookTitle }; Names.enrichYearAndRecording(&f, profile: p); if !suggestions.contains(where: { $0.fields == f }) { suggestions.append(Interpretation(label: label, fields: f, evidence: why, confidence: strength)) } }
+        func add(_ label: String, _ input: Fields, _ why: String, _ strength: String) { var f = input; if p.kind == .video && f.type.isEmpty { f.type = basic.0.type }; f.artist = RuleEngine.artistName(f.artist, profile: p); if p.kind == .audiobook && !f.bookTitle.isEmpty { f.title = f.bookTitle }; Names.enrichYearAndRecording(&f, profile: p); if !suggestions.contains(where: { $0.fields == f }) { suggestions.append(Interpretation(label: label, fields: f, evidence: why, confidence: strength)) } }
         // Remembered examples are scoped to one profile and must be explicitly opted in.
         let remembered = memories.filter { $0.profileID == p.id && $0.remember && $0.settingsSignature == Learning.settingsSignature(p) && $0.sourceParentPath == url.deletingLastPathComponent().path && $0.original == url.lastPathComponent }
         for example in remembered {
             suggestions.append(Interpretation(label: "Remembered correction", fields: example.fields, evidence: "Previously approved exact filename correction in this profile. Confirm it applies to this item too.", confidence: "Strong evidence", overrideBasename: URL(fileURLWithPath: example.final).deletingPathExtension().lastPathComponent))
         }
+        if MediaFilenameParser.supports(p) { add("Built-in filename interpretation", basic.0, basic.1, "Review filename evidence") }
         if p.kind == .video, let ep = Names.episodeComponents(original, profile: p) {
             var f = Fields(); f.series = Names.cleanField(ep.series, p); f.season = ep.season; f.episode = ep.episode; f.episodeTitle = Names.cleanField(ep.title, p)
             add("TV episode", f, "The original filename contains S/E numbers; the video profile is selected. Year was not guessed.", "Strong evidence")

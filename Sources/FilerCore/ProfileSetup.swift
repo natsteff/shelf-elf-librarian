@@ -12,7 +12,7 @@ public enum ProfileSetup {
         var profile = Profile(kind, bookSubtype: subtype)
         profile.name = name; profile.schemaVersion = 2; profile.rootAllowed = true
         profile.classifications = PatternEngine.defaultTypes(for: kind)
-        profile.workspacePatterns = PatternEngine.defaults(for: profile)
+        profile.workspacePatterns = MediaFilenameParser.supports(profile) ? nil : PatternEngine.defaults(for: profile)
         if kind == .video { profile.mediaRoutingEnabled = false; profile.mediaCategories = MediaRouting.starters; profile.folderMask = "{Title} ({Year?})"; profile.filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
         var rules = profile.rules
         if [.video, .music, .audiobook].contains(kind) { rules.smartTitleCase = true }
@@ -54,9 +54,9 @@ public enum ProfileSetup {
     /// Older/custom profiles may lack built-in naming Types required by starter categories.
     /// Supply definitions only: preserve all existing names, aliases, layouts, patterns and mappings.
     public static func addingMissingVideoTypes(_ input: Profile) -> Profile {
-        guard MediaRouting.enabled(input) else { return input }
+        guard input.kind == .video else { return input }
         var profile = input
-        let referenced = Set((profile.mediaCategories ?? []).flatMap { [$0.associatedType] + $0.rules.map(\.type) } + (profile.workspacePatterns ?? []).map(\.assignedType))
+        let referenced = Set(PatternEngine.defaultTypes(for: .video).map(\.name) + (profile.mediaCategories ?? []).flatMap { [$0.associatedType] + $0.rules.map(\.type) } + (profile.workspacePatterns ?? []).map(\.assignedType))
         let standards = PatternEngine.defaultTypes(for: .video)
         for (index, standard) in standards.enumerated() {
             let requested = referenced.filter { value in
@@ -99,6 +99,7 @@ public enum ProfileSetup {
     public static func migrate(_ input: Profile) throws -> Profile {
         if input.schemaVersion >= 2 {
             var current = input
+            if MediaFilenameParser.supports(current) { current.workspacePatterns = nil }
             if current.workspacePatterns?.contains(where: { $0.compatibility }) == true {
                 let editable = (current.workspacePatterns ?? []).filter { !$0.compatibility }
                 current.workspacePatterns = editable.filter(\.enabled) + PatternEngine.defaults(for: current).filter { candidate in !editable.contains { $0.pattern == candidate.pattern && $0.enabled } } + editable.filter { !$0.enabled }
@@ -130,7 +131,7 @@ public enum ProfileSetup {
         if p.rules.hyphensToSpaces || p.rules.lowercaseEpisodeTitle { var cleanup = p.rules; cleanup.hyphensToSpaces = false; cleanup.lowercaseEpisodeTitle = false; p.rules = cleanup }
         p.extractionMask = ""
         p.rootAllowed = true; p.schemaVersion = 2
-        return p
+        return try migrate(p)
     }
 }
 public struct SettingsArchive: Codable {

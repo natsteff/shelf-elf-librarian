@@ -599,7 +599,7 @@ final class FilerCoreTests {
         let unknown = Names.basicInterpret(src.appendingPathComponent("Sale [Unregistered].mp4"), video)
         XCTAssertTrue(unknown.1.contains("Unrecognized")); XCTAssertThrowsError(try PatternEngine.validateClassification(unknown.0, profile: video))
         video.workspacePatterns = [WorkspacePattern("{Title}", type: "Movie"), WorkspacePattern("{Title} [Commercial]", type: "Commercial")]
-        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Sale [Commercial].mp4"), video).0.type, "Movie")
+        XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Sale [Commercial].mp4"), video).0.type, "Commercial")
         video.workspacePatterns?[0].enabled = false
         XCTAssertEqual(Names.basicInterpret(src.appendingPathComponent("Sale [Commercial].mp4"), video).0.type, "Commercial")
         video.classifications?[3].filenameMask = "Ad - {Title}"
@@ -719,7 +719,7 @@ final class FilerCoreTests {
         genreMusic.workspacePatterns = [WorkspacePattern("{Artist} - {Title} [{Genre}]", type: "@capture")]
         genreMusic.classifications = [FilingType("Rock", aliases: "Rock Music", folderMask: "{Genre}/{Artist}")]
         let songURL = src.appendingPathComponent("Band - Song [Rock Music].mp3")
-        let genre = Names.basicInterpret(songURL, genreMusic).0
+        let genre = PatternEngine.interpret(songURL, profile: genreMusic).0
         XCTAssertEqual(genre.genre, "Rock")
         XCTAssertEqual(try Names.render(PatternEngine.folderMask(for: genre, profile: genreMusic), fields: genre, profile: genreMusic, source: songURL, folder: true), "Rock/Band")
         let software = try XCTUnwrap(starters.first { $0.kind == .software })
@@ -758,8 +758,7 @@ final class FilerCoreTests {
         XCTAssertEqual(try ProfileSetup.migrate(migrated), migrated)
         var notesOnly = migrated; notesOnly.notes = "Changed description"
         XCTAssertEqual(Learning.settingsSignature(notesOnly), Learning.settingsSignature(migrated))
-        XCTAssertTrue((migrated.workspacePatterns?.count ?? 0) > 1)
-        XCTAssertTrue(migrated.workspacePatterns?.allSatisfy { !$0.compatibility && $0.enabled } == true)
+        XCTAssertEqual(migrated.workspacePatterns, nil)
         let archive = SettingsArchive(profiles: [legacy], general: .suggestedDefaults, activeProfileID: legacy.id)
         let restored = try JSONDecoder().decode(SettingsArchive.self, from: JSONEncoder().encode(archive))
         XCTAssertEqual(try restored.validatedProfiles()[0], migrated)
@@ -1248,4 +1247,8 @@ do { try suite.setUpWithError(); try suite.testDocumentDefinedComponents(); try 
 do { try suite.setUpWithError(); try suite.testRemovedLegacySettingsAndSeriesAlias(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL legacy removal and series: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testROMExtensionRoutingAndPreservation(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL ROM mappings: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testROMLinkedSetGuard(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL ROM linked sets: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 91 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testBuiltInMusicAndVideoParsing(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL built-in media parsing: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testSchemaTwoMediaProfileRepair(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL saved media repair: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testCommonVideoResolutionSetting(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL resolution shorthand: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testVideoResolutionRoundTrip(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL video resolution round trip: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 95 fixture scenarios"); exit(failures == 0 ? 0 : 1)

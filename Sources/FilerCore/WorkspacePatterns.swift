@@ -59,7 +59,8 @@ public enum PatternEngine {
     }
     public static func validateClassification(_ f: Fields, profile: Profile) throws {
         let value = FieldCatalog.get(classificationKey(profile), f)
-        if !value.isEmpty && lookup(value, profile: profile) == nil {
+        let builtInVideoType = profile.kind == .video && defaultTypes(for: .video).contains { entry in ([entry.name] + UniversalPreferences.entries(entry.aliases)).contains { $0.caseInsensitiveCompare(value) == .orderedSame } }
+        if !value.isEmpty && lookup(value, profile: profile) == nil && !builtInVideoType {
             throw fail("Unrecognized \(classificationKey(profile)): \(value). Select or add a configured value before filing.")
         }
     }

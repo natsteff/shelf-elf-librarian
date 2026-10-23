@@ -4,7 +4,7 @@
   <img src="Branding/README-Logo.png" alt="Shelf Elf Librarian — an elf librarian at a laptop in front of a bookshelf" width="720">
 </p>
 
-**0.1.0 Alpha · Build 59** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
+**0.1.0 Alpha · Build 60** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
 
 Your libraries, neatly shelved.
 
@@ -12,7 +12,7 @@ Shelf Elf Librarian helps you review filenames, rename selected files, and copy 
 
 ## Download and run
 
-Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-build.59), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
+The current published download is Build 59; this source describes Build 60. Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-build.59), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
 
 This alpha is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
 
@@ -56,7 +56,7 @@ A profile has three related definitions:
 
 Input patterns match the entire basename in order; the first enabled match wins. They can explicitly read parent folders instead. Output masks use `{Component}` placeholders plus fixed text and separators. `/` separates folder levels; `{SeriesName?}` omits an empty optional level. The original extension is added automatically. Missing required components block the affected file.
 
-Documents profiles can define custom components directly in input patterns, then edit their values and use them in output masks. Music and Video retain built-in component definitions and metadata mappings. Type, System or Genre mappings can override the profile’s layouts.
+Documents profiles can define custom components directly in input patterns, then edit their values and use them in output masks. Music and Video use built-in filename parsers, component definitions and metadata mappings; saved input patterns cannot disable or replace them. Their settings expose filing Types and output layouts instead of input-pattern editing. Type, System or Genre mappings can override the profile’s layouts.
 
 For audiobooks, `{SeriesName}` aliases `{Series}`. The starter folder mask is `{Author}/{SeriesName?}/{BookFolder}`; BookFolder prefixes BookTitle with SeriesNumber when present. Filename patterns support numbered and unnumbered series. Author, book and chapter fields can also be entered manually.
 
@@ -97,7 +97,7 @@ Music profiles offer two separate Tools actions for selected visible MP3 files:
 
 Both actions require confirmation. They preserve audio bytes, revalidate source files and block unsupported or unsafe tag layouts. They have **no Undo or retained file backup**. Some legacy or protected tag layouts require another editor first. Non-MP3 selections are skipped. Use a dedicated tag editor such as TagCraft for broader metadata editing.
 
-For **MP4, M4V and MOV**, locally readable metadata can fill missing components referenced by the active output masks. Existing filename values and manual edits take priority. Supported fields include title, year, series, season, episode, episode title, genre and display dimensions. Other video containers retain filename interpretation. Video metadata is read-only; photo EXIF is not read.
+For **MP4, M4V and MOV**, locally readable metadata can fill missing components referenced by the active output masks. Existing filename values and manual edits take priority. Supported fields include title, year, series, season, episode, episode title, genre and display dimensions. Other video containers retain filename interpretation. Video metadata is read-only; photo EXIF is not read. **Use common resolution shorthand** defaults on in Video Profile Settings: actual dimensions map to the closest common size tier (480p, 720p, 1080p, 4K or 8K). Disable it to keep full display dimensions. Cropped and portrait video use both dimensions for tier selection. The p suffix is conventional size shorthand, not verified scan type; dimensions do not establish DVD or Blu-ray origin. Existing explicit resolution labels remain unchanged.
 
 ## Magic
 
@@ -128,7 +128,7 @@ Operation history expires after **30 days**. Explicitly remembered corrections p
 
 ## Alpha limitations and validation
 
-Start with disposable files and keep backups of important originals. Build 59 passes **91 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
+Start with disposable files and keep backups of important originals. Build 60 passes **95 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
 
 Known limits include concurrent directory-replacement races, network filesystem behavior, actual cross-volume/hardware failures and full attribute fidelity across differing filesystems. Automatic crash rollback/cleanup, coordinated sidecar/ROM sets, video tag writing, archive extraction, transcoding, full-library inventory and unattended filing are not implemented.
 

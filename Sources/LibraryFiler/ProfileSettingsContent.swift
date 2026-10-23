@@ -143,13 +143,17 @@ struct ProfileSettingsContent: View {
             SettingsHint(text: "Folder masks create subfolders beneath this root. The Copy/Move preview shows the complete destination before you apply it.")
         }
         Section("2. Read filenames") {
-            Button("Workspace Filename Patterns & Filing Types…", action: patterns)
-            SettingsHint(text: "Input patterns run in order and extract components from original filenames. Filing types choose output layouts in section 4. Test patterns against workspace examples before saving.")
+            Button(MediaFilenameParser.supports(profile) ? "Filing Types & Layouts…" : "Workspace Filename Patterns & Filing Types…", action: patterns)
+            if MediaFilenameParser.supports(profile) {
+                SettingsHint(text: "Music and Video use built-in filename parsers. No input-pattern setup is required. The button configures filing Types and output layouts; Documents profiles support editable input patterns and custom components.")
+            } else { SettingsHint(text: "Input patterns run in order and extract components from original filenames. Filing types choose output layouts in section 4. Test patterns against workspace examples before saving.") }
             Text("Available components: " + componentReference).font(.caption)
             if profile.kind == .photos || profile.kind == .music || profile.kind == .audiobook {
                 SettingsHint(text: "Components come from filenames or explicitly configured parent-folder patterns. MP3 tags are available as read-only reference information; they never fill components automatically. Photo EXIF data is not read.")
             }
             if profile.kind == .video {
+                Toggle("Use common resolution shorthand", isOn: Binding(get: { profile.useCommonResolutionShorthand ?? true }, set: { profile.useCommonResolutionShorthand = $0 }))
+                SettingsHint(text: "Uses the closest common size tier, such as 480p, 720p, 1080p, 4K or 8K. Disable to use actual display dimensions, such as 644x480, from video metadata. The p labels are conventional size shorthand, not verified scan type; DVD/Blu-ray origin cannot be inferred from dimensions. Existing explicit resolution labels are retained.")
                 SettingsHint(text: "MP4, M4V and MOV metadata can fill missing components used by the active output masks. Existing filename values and manual edits win. The tag icon shows values and differences. Other video formats continue to use filename interpretation. No tags are changed.")
             }
         }
@@ -219,7 +223,7 @@ struct ProfileSettingsContent: View {
             DisclosureGroup("Components & mask reference (use {Component}; fixed text and separators are allowed—see the guide)") {
                 Text(componentReference).font(.caption)
                 Button("Interpretation & Output Masks Guide…", action: guide)
-                Button("Edit input patterns and filing type overrides…", action: patterns)
+                Button(MediaFilenameParser.supports(profile) ? "Edit filing type overrides…" : "Edit input patterns and filing type overrides…", action: patterns)
             }
         }
         Section("5. Magic & learning") {

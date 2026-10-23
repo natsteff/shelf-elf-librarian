@@ -1,3 +1,5 @@
+> Build 60: Music and Video use built-in filename parsing. Their saved input-pattern rows are ignored and removed during migration. Input-pattern editing below applies to Documents and other configurable content types; Music/Video still support filing Types and output masks.
+
 # Workspace patterns and filing layouts — Build 40
 
 Open **Profile Settings → Workspace Filename Patterns & Filing Types…**. Pattern changes stay in the profile draft until you click Done, then Save in Profile Settings. Cancel in the pattern window restores its starting draft.
@@ -140,3 +142,7 @@ ROMs retain their original filenames, including punctuation, case and region/rev
 Shared formats such as iso, bin, chd, zip and 7z have no default system inference. Capture `{System}` from filenames or parent folders, or choose it manually. Explicit captured Systems take priority over extension mappings; discrepancies are shown in evidence. Unknown/missing Systems require review. No archives are inspected. Folders containing cue, m3u/m3u8, gdi, ccd or mds descriptors are conservatively blocked from individual copy, move and rename operations; keep linked sets together outside this workflow.
 
 Audiobooks accept `{SeriesName}` as an alias of `{Series}`. The starter folder mask is `{Author}/{SeriesName?}/{BookFolder}`; empty series levels are omitted. Both numbered-series and unnumbered Author - SeriesName - BookTitle patterns are provided.
+
+## Video resolution display
+
+Use common resolution shorthand defaults on for Video profiles. Pixel dimensions from read-only metadata map to the closest 480p, 720p, 1080p, 4K or 8K size tier; both edges are considered for cropped/portrait video. Disable the option to retain full display dimensions. Explicit filename/component labels are retained. The conventional p labels do not assert progressive scan detection, and DVD/Blu-ray origin is never inferred from size.

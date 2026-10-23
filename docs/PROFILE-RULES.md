@@ -1,6 +1,6 @@
 # Profile rules, Magic and manual editing
 
-Current behavior: **0.1.0 Alpha, Build 59**. See the [README](../README.md) for setup and limitations, and the [pattern guide](FILENAME-PATTERNS.md) for mask syntax.
+Current behavior: **0.1.0 Alpha, Build 60**. See the [README](../README.md) for setup and limitations, and the [pattern guide](FILENAME-PATTERNS.md) for mask syntax.
 
 ## What you configure
 
@@ -26,7 +26,7 @@ Typing a basename does not rename a file. Enter or the row checkmark applies it;
 
 Component edits change proposals. Normal library filing separately requires confirmation of interpreted components; renaming alone does not confirm them. Keep Current Filenames skips individual component confirmation but still computes folder destinations and validates them. A blocked file stays blocked until its missing values or conflicts are resolved.
 
-Documents profiles can define custom captures directly in patterns, such as `{GameTitle} - {ResourceName}`. Those names appear in the component editor and output masks. Music and Video retain built-in captures and metadata mappings. Books support SeriesName as an alias of Series and optional folder levels.
+Documents profiles can define custom captures directly in patterns, such as `{GameTitle} - {ResourceName}`. Those names appear in the component editor and output masks. Music and Video use built-in filename parsers, captures and metadata mappings. Their input parsing is independent of editable profile definitions. Books support SeriesName as an alias of Series and optional folder levels.
 
 ## Magic
 
