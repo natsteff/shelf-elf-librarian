@@ -12,7 +12,7 @@ Shelf Elf Librarian helps you review filenames, rename selected files, and copy 
 
 ## Download and run
 
-Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/latest), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
+Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-build.59), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
 
 This alpha is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
 
