@@ -1,6 +1,10 @@
 # Validation scope
 
-The current local app is **0.1.0 Alpha (Build 33)**, compiled for arm64 and locally ad hoc signed. The latest build completed with zero failures across 41 fixture scenarios. Screenshots are deferred during early development; the new preparation/settings interface is awaiting user review.
+The current app is **0.1.0 Alpha (Build 59)**, compiled for arm64 and locally ad hoc signed. The latest build completed with **zero failures across 91 disposable fixture scenarios**. Both the main app and isolated Fresh Install Test edition were packaged and their signatures verified. Native GUI appearance and interactions require manual review.
+
+Build 59 adds coverage for Documents custom capture editing/rendering/persistence, fixed Music/Video capture validation, removed legacy extraction and cleanup behavior, optional audiobook SeriesName, ROM extension routing and original-filename preservation, editable System destinations, ambiguous extensions and linked-disc-set guards. Builds 56–58 also cover bounded MP3/video reading, reviewed tag update/purge, verified audio preservation, optional Magic staging steps and 30-day history retention.
+
+Historical build notes below describe coverage at those points in development; the current behavior is documented in README.md.
 
 ## Reproduce
 
@@ -30,7 +34,7 @@ No real workspace/library files or saved user profiles were modified during thes
 
 New fixture coverage verifies fresh suggested defaults with Other empty; append idempotence and cross-group duplicate/case-conflict handling; preferred punctuation and complete-entry boundaries; AC-DC delimiter parsing in basic and Magic modes; removal precedence; book subtype defaults and new mask/extraction fields; legacy field decoding; music track/year/recording evidence and optional Live output. Prior direct rename/undo, filesystem guards, spelling token exclusions, display comparisons and episode-order checks remain included.
 
-UI appearance, dictionary availability in the normal app, and new settings/subtype workflows remain for owner review. No real library contents or user preference files were changed by these fixture checks. GitHub publishing remains on hold.
+UI appearance, dictionary availability in the normal app, and new settings/subtype workflows remain for owner review. No real library contents or user preference files were changed by these fixture checks. Build 59 is prepared for public source and binary publication.
 
 Build 33 is a UI/source-spelling presentation update. All 41 disposable fixture checks remain included. New control placement, scrolling footer separation, status layout and source underline placement are awaiting owner visual review; no UI automation was performed.
 

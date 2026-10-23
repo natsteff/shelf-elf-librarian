@@ -1,6 +1,6 @@
 # Codex handoff: AGPL license and shared usage notice
 
-CURRENT: Shelf Elf Librarian Build 23, usage notice 2.0. This replaces the previous custom EULA approach. Nate selected AGPL-3.0 to match his other projects. Nate confirmed the Build 23 startup notice works after launching the updated app.
+License approach introduced in Shelf Elf Librarian Build 23; current app Build 59, usage notice 2.0. This replaces the previous custom EULA approach. Nate selected AGPL-3.0 to match his other projects. Nate confirmed the Build 23 startup notice works after launching the updated app.
 
 ## Instruction for a receiving assistant
 
@@ -8,9 +8,9 @@ Inspect your project's existing license, startup and storage first. Use the stan
 
 ## Actual reusable files
 
-Reference repository: /Users/nate/Documents/Codex/Shelf-Elf-Librarian
+Reference repository: https://github.com/natsteff/shelf-elf-librarian
 
-- LICENSE: actual complete, unmodified AGPL-3.0 text, copied from /Users/nate/Documents/Codex/Forge-GameSheets/LICENSE.
+- LICENSE: actual complete, unmodified AGPL-3.0 text, included at the repository root.
 - Legal/CORE-TERMS.txt: actual shared informational notice, version 2.0. Despite its legacy filename, this is no longer contractual EULA wording.
 - Legal/SHELF-ELF-NOTES.txt: actual app-specific behavior and project/support URL. Replace with your app's details.
 - USAGE-NOTICE.md: generated complete notice for repository/GitHub readers.
@@ -68,7 +68,7 @@ With accounts, store per-app, per-user notice acknowledgment using stable notice
 
 ## Proposed App-Standards repository — not yet created
 
-Suggested private repo: natsteff/app-standards (availability/approval pending). Local path: /Users/nate/Documents/Codex/App-Standards.
+A separate shared standards repository is a future option; it is not a runtime dependency.
 
 Suggested contents: unmodified license references with provenance; shared informational notices and version/hash; per-app supplement templates; behavior/usage-notice.md; adapters/macos-swiftui and adapters/web; consumer manifests with pinned shared versions; proposals, changelog and AGENTS.md collaboration instructions.
 

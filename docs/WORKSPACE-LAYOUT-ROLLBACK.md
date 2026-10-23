@@ -1,6 +1,6 @@
 # Combined workspace layout — Build 42
 
-Build 41 is preserved before this redesign:
+Historical developer note: the following checkpoints are local development artifacts, not GitHub release assets. Build 41 was preserved before this redesign:
 
 - Local Git tag: `build-41-before-layout` (commit `69aa5d3`).
 - Saved source: `outputs/checkpoints/build-41/source.tgz`.

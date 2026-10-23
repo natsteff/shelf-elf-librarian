@@ -1,247 +1,164 @@
 # Shelf Elf Librarian
 
 <p align="center">
-  <img src="Branding/README-Logo.png" alt="Shelf Elf Librarian — the elf librarian at a laptop in front of a bookshelf" width="720">
+  <img src="Branding/README-Logo.png" alt="Shelf Elf Librarian — an elf librarian at a laptop in front of a bookshelf" width="720">
 </p>
 
-**0.1.0 Alpha (Build 33)** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon
+**0.1.0 Alpha · Build 59** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
 
-Your libraries, neatly shelved. Thanks to this adorable little elf!
+Your libraries, neatly shelved.
 
-Shelf Elf Librarian prepares filenames and files selected items into separate libraries. Profiles determine the visible file types, optional filename cleanup, destination and folder rules. Processing stays local; there are no accounts, telemetry or online identification services. Embedded MP3 tags change only through explicit, reviewed Tools actions or enabled, confirmed Magic steps.
+Shelf Elf Librarian helps you review filenames, rename selected files, and copy or move them into organized libraries. Profiles define how to read existing names, build proposed names, and choose destination folders. Processing stays local: no accounts, telemetry, online identification service or unattended filing.
 
-## Filenames and metadata
+## Download and run
 
-Shelf Elf Librarian organizes files using filenames, filename components and profile rules. MP3 tags are read-only reference information: the tag icon beside a filename or in Filename Components opens all discovered ID3/APE items, with differences and additional details. Tags never automatically change MP3 components or filename proposals. Use Tag for a mapped field explicitly stages that value for one file; the popup stays open for additional choices. Review Proposed Filename closes it and focuses the filename. Enter applies the rename; Esc restores the components and proposal from before the tag choices. Artist and Title still come from filename interpretation or your edits. Magic can also use parent-folder names, patterns among selected files and remembered corrections.
+Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/latest), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
 
-For MP4, M4V and MOV, locally readable video metadata can fill missing components required by the active output masks, including title, year, series, season, episode, episode title, genre and display dimensions. Existing filename values and manual edits take priority; disagreeing tags do not supply a value. Other containers retain filename interpretation and show a reading limitation. Video dimensions are expressed as width x height without guessing progressive/interlaced scanning. Video metadata is never written or purged. Selected MP3 tags can be updated or purged with reviewed Tools commands or optional confirmed Magic steps described below; use TagCraft for broader tag editing. Refresh the workspace after external tag edits.
+This alpha is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
 
-The filename mask specifies which components appear in the proposed name and their order; the folder mask builds destination subfolders. **Confirmation required** means the user has not confirmed the interpreted components. Select the file, check the components in the right panel, and click **Confirm Filename Components**. The **OK** checkmark and green input tint mean only that the proposed filename exactly matches the current one; yellow means it differs. Confirmation does not replace Preview’s validation of missing values and conflicts.
+The release also includes a **Fresh Install Test** edition with separate preferences, profiles and history. Use the main app normally; use the test edition only to examine first-run behavior and starter defaults. Neither edition includes your own library files or settings.
 
-## Build and run
+## What it does
 
-Open `Package.swift` in Xcode, or run on a Mac with an Apple Swift toolchain and macOS SDK:
+- **Review and rename:** editable filename proposals, red/blue difference highlighting, spelling suggestions, shared preferred spellings, title casing and targeted replacement rules.
+- **Organize libraries:** ordered filename patterns, editable components, folder/filename masks and classification-specific layouts. Copy/Move previews group files by destination folder.
+- **Route mixed videos:** optional Media Categories map movies, TV shows, documentaries and other categories to your own library folders. Categories can be added, removed and customized.
+- **Inspect metadata:** view MP3 ID3/APE tags and differences; use supported video metadata to supplement missing components.
+- **Maintain MP3 tags:** explicitly review updates from filename components or purge unwanted tags using a configurable keep list, including artwork.
+- **Run Magic:** optional local interpretation using filenames, parent-folder and selected-file evidence, plus explicitly remembered corrections. Every run requires confirmation before library filing.
+- **Keep control:** selected visible files only, collision checks, source verification, operation history and guarded Undo where supported.
+
+## Start with a workspace
+
+1. Select a profile and choose **Open Workspace…**. Its extension filter determines which files appear; **Include subfolders** controls recursive discovery.
+2. Open **Profile Settings** and use **Choose Library Location…**. Configure the profile’s patterns and folder/filename masks as needed.
+3. Select files and review **Filename Components**. Component edits change proposals without touching files. Confirm the interpreted components before normal filing.
+4. Use **Rename Selected** or a row’s checkmark to apply proposed names in the current folders. A manually edited filename is applied with Enter; Esc cancels uncommitted editing.
+5. To file into the library, choose Copy or Move and open its preview. Review destination groups, new folders and blocked rows, then explicitly confirm. The optional **Keep Current Filenames** path skips individual component confirmation but still uses folder masks and validates destinations.
+
+**Copy** is the initial default; General Settings can change it. Successful operations deselect completed files; failed, blocked and unprocessed files remain selected. Moves rescan the workspace, including after partial completion or cancellation.
+
+The last workspace and profile restore on launch, but selections and pending operations do not resume. Refresh rereads files and tags and recomputes ordinary proposals; it does not run Magic. Review pending work before refreshing or changing settings.
+
+If a configured library folder has been replaced at the same path, the app asks you to confirm **Use This Folder**, saves its new identity and rebuilds the preview. Execution still needs confirmation.
+
+## Profiles, components and masks
+
+Nine starter profiles are supplied on new installs: **Video Media Server, Music, Audiobooks, FORGE, ROMs, Photos, PDF Library, Software & Installers, and Ebooks & Comics**. Their destinations must be chosen by you.
+
+A profile has three related definitions:
+
+| Setting | Purpose | FORGE example |
+| --- | --- | --- |
+| Input pattern in **Workspace Filename Patterns & Filing Types…** | Read an existing basename into components | `{GameTitle} - {ResourceName}` |
+| **Folder mask** | Build folders beneath the library location | `{GameTitle}` |
+| **Filename mask (without extension)** | Build the proposed basename | `{GameTitle} - {ResourceName}` |
+
+Input patterns match the entire basename in order; the first enabled match wins. They can explicitly read parent folders instead. Output masks use `{Component}` placeholders plus fixed text and separators. `/` separates folder levels; `{SeriesName?}` omits an empty optional level. The original extension is added automatically. Missing required components block the affected file.
+
+Documents profiles can define custom components directly in input patterns, then edit their values and use them in output masks. Music and Video retain built-in component definitions and metadata mappings. Type, System or Genre mappings can override the profile’s layouts.
+
+For audiobooks, `{SeriesName}` aliases `{Series}`. The starter folder mask is `{Author}/{SeriesName?}/{BookFolder}`; BookFolder prefixes BookTitle with SeriesNumber when present. Filename patterns support numbered and unnumbered series. Author, book and chapter fields can also be entered manually.
+
+Changing a content type preserves existing rules until **Load defaults for this content type** is used. **Save** commits a profile draft; **Cancel** discards it. Deleting a profile does not delete library files. **Tools → Export Settings… / Import Settings…** transfers profile and General Settings; import confirms replacement and backs up existing settings first.
+
+See the [filename pattern and layout guide](docs/FILENAME-PATTERNS.md).
+
+### Spelling and cleanup
+
+General Settings holds shared preferred spellings and the editable **Universal lowercase title words** list. Enable **Title case** and **Smart title case** in a profile to use that word list. Preferred spelling/case exceptions apply across profiles; explicit removable labels take precedence.
+
+Filename hyphen-to-space conversion and whole-episode filename lowercasing have been removed. Use targeted replacement rules for deliberate conversions. Season/episode formatting and capitalization remain separate options. Music’s leading-“The” artist formatting and bucket-only ignore option are independent and default off.
+
+### Media Categories for video
+
+Enable Media Categories to map each category to a library subfolder of your choosing, or explicitly to the library root. The six starter categories are Commercials, Documentaries, Home Videos, Movies, Music Videos and TV Shows. Recognition uses configured types and rules; you can override a file’s category manually. Unmatched videos can require review, use a chosen category, or use the library root.
+
+Category routing chooses the destination branch; folder masks create further folders within it. Existing folders are reused. Missing folders are created only when an operation is applied. Removing a category does not delete files or folders.
+
+### ROM organization
+
+ROM profiles preserve original filenames, including punctuation, case and release markers. Clear extension mappings infer System: for example `.nes` → NES, `.sfc`/`.smc` → SNES and `.gba` → Game Boy Advance. Edit mappings under **Workspace Filename Patterns & Filing Types…**, then configure each System’s library folder or inherit the `{System}` folder mask.
+
+Shared extensions such as `.iso`, `.bin`, `.chd`, `.zip` and `.7z` have no default system inference. Read `{System}` from an explicit filename or parent-folder pattern, or choose it manually. Explicit captured values take priority over extension mappings; differences are noted for review. No ROM contents or archives are inspected.
+
+Folders containing disc descriptors or playlists (`cue`, `m3u`, `m3u8`, `gdi`, `ccd`, `mds`) are conservatively blocked from individual copy, move and rename operations. Linked sets need to stay together; coordinated set-level filing is not implemented. A deliberate manual filename edit remains possible for standalone ROM files.
+
+## Metadata and MP3 tools
+
+The tag icon beside a filename or in Filename Components opens discovered metadata. Differences appear first, followed by mapped fields in relevance order—Artist, Title, Album, Release Year and Track Number—then other tags. Long values are collapsed; artwork is identified without loading images.
+
+MP3 tags never automatically replace filename components. **Use Tag for…** stages a chosen value for that file. The popup stays open for more choices; **Review Proposed Filename** focuses the row. Enter renames the file; Esc restores the proposal and components from before those tag choices. This action does not write tags.
+
+Music profiles offer two separate Tools actions for selected visible MP3 files:
+
+- **Update MP3 Tags from Components…** previews missing/differing Artist, Title, Album, Year, Track Number and Genre tags. Nonempty components supply values; blank components never erase tags. All proposed changes start checked; uncheck fields or files as needed.
+- **Purge Other MP3 Tags…** previews removals based on **MP3 Tags to Keep on Purge** in Profile Settings. Every keep option defaults on, including artwork, comments, lyrics and other/custom tags, so the initial policy removes nothing.
+
+Both actions require confirmation. They preserve audio bytes, revalidate source files and block unsupported or unsafe tag layouts. They have **no Undo or retained file backup**. Some legacy or protected tag layouts require another editor first. Non-MP3 selections are skipped. Use a dedicated tag editor such as TagCraft for broader metadata editing.
+
+For **MP4, M4V and MOV**, locally readable metadata can fill missing components referenced by the active output masks. Existing filename values and manual edits take priority. Supported fields include title, year, series, season, episode, episode title, genre and display dimensions. Other video containers retain filename interpretation. Video metadata is read-only; photo EXIF is not read.
+
+## Magic
+
+Enable **Magic for this profile**, select visible files and click **Run Magic**. It analyzes locally and opens a mandatory Copy/Move confirmation with profile, destination names, file counts and enabled tag steps. Nothing is filed until you confirm. Discovery, refresh and profile changes never run Magic automatically.
+
+Music profiles have two additional default-off options: update MP3 tags from components, and purge tags using the keep list. The order is:
+
+1. Prepare filename components and proposed names.
+2. Update selected supported tags on a private library staging copy, if enabled.
+3. Purge unwanted tags, if enabled.
+4. Publish the completed library file; for Move, remove the unchanged source only after successful preparation and publication.
+
+Purge wins if an updated field is outside the keep list. Copy leaves workspace originals unchanged. Tag-step failures block publication of that file. Ordinary Copy/Move previews do not run these optional tag steps. Magic operations that change tags have **no automatic Undo or retained backup**.
+
+Explicitly remembered corrections are local and profile-scoped. Recommendations change drafts for review; learning does not apply settings or execute operations by itself.
+
+## File operations, history and recovery
+
+Previews freeze file identity, size, timestamps and SHA-256 along with parent/destination checks. Execution revalidates them. Collision checks and exclusive publication prevent replacing an existing destination; duplicate batch outputs and case/Unicode conflicts are blocked.
+
+Copies use verified temporary targets. Ordinary same-volume moves can use exclusive rename; cross-volume and tag-changing Magic moves use verified-copy preparation. Cancellation stops between files, so earlier successful operations remain completed. Batches are not atomic.
+
+**History & Recovery** records per-file results and interrupted operations, including reported staging/recovery paths. Guarded Undo is available only for supported operations and refuses changed files or occupied original paths. It is not a full file-backup system. Cross-volume undo requires a new reviewed operation; tag updates/purges have no Undo.
+
+Operation history expires after **30 days**. Explicitly remembered corrections persist separately. History cleanup does not delete source, destination, partial or recovery files. Settings backups are separate and currently have no automatic expiry.
+
+**Tools → Clean Folder Names…** previews renaming selected direct child folders with their contents. It does not recursively reorganize folders.
+
+## Alpha limitations and validation
+
+Start with disposable files and keep backups of important originals. Build 59 passes **91 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
+
+Known limits include concurrent directory-replacement races, network filesystem behavior, actual cross-volume/hardware failures and full attribute fidelity across differing filesystems. Automatic crash rollback/cleanup, coordinated sidecar/ROM sets, video tag writing, archive extraction, transcoding, full-library inventory and unattended filing are not implemented.
+
+See [validation scope](VALIDATION.md) for details.
+
+## Build from source
+
+Use a Mac with a Swift 6 toolchain and the macOS SDK:
 
 ```sh
 ./scripts/build.sh
 open "outputs/Shelf Elf Librarian.app"
 ```
 
-The script builds the app and standalone fixture runner, runs its checks, packages a fresh app bundle in the checkout’s `outputs/` folder, and signs it locally with an ad hoc signature. The current build targets the machine's architecture; the delivered local builds are arm64. The app is not notarized. `Info.plist` supplies its version and build labels.
+The script builds the app and standalone fixture runner, runs the checks, generates license notices, packages the app and applies an ad hoc signature. It targets the build machine’s architecture; the supplied release is arm64, not a universal binary. Version/build labels come from `Info.plist`.
 
-## Using a workspace
+For isolated starter-profile review:
 
-Open your own workspace and configure a library destination in Profile Settings. Fictional demo loading has been removed; automated checks use independent disposable fixtures. Existing demo folders or saved profiles are not deleted.
+```sh
+./scripts/build-fresh-install-test.sh
+```
 
-1. Choose a library profile and open a workspace. Only the profile's accepted extensions appear; unsupported files and links are excluded.
-2. Select visible files and review the filename components. Confirm filename-based interpretations before filing.
-3. Configure the destination in Profile Settings. An optional advanced category adds one folder beneath the root; a blank category uses the root with any folder-mask subfolders. New folders are created only on Apply. Open Library in Finder is available in Settings and beside the workspace destination path.
-4. Choose **Copy to Library** (default) or explicitly select Move. **File only** retains source basenames. **Clean Preview** renames in the workspace; **File Preview** combines cleanup and filing.
-5. Review complete paths, new folders, groups and conflicts. Apply affects only included, actionable rows. Hidden main-list selections are excluded.
+Run the main build first. See the [fresh-install review guide](docs/FRESH-INSTALL-REVIEW.md).
 
-Music and audiobook profiles can both accept MP3: the chosen profile, rather than an extension guess, determines the library. For a chapter group, select the chapter files together, enter Author and Book title, and confirm the filename components. Chapter numbering is preserved by default.
+## Local data and privacy
 
-The last workspace and selected profile restore on launch and files are rescanned read-only. Unavailable or replaced workspaces show a reconnect message. Selections, previews and pending operations do not resume automatically.
-
-## Configure library profiles
-
-In **Settings**, edit a profile's name, destination root, comma-separated extensions, cleaning rules, extraction mask and output masks. **Save** commits the draft; **Cancel** discards it. **Duplicate as New Profile** creates an independent configuration. **Delete this profile** removes settings after confirmation, leaving library files and operation history intact.
-
-Templates provide defaults for video, music, audiobooks, PDF documents, and **Other / Custom**. Choosing a template alone retains existing rules; **Reset rules to selected template** explicitly applies defaults to the draft.
-
-For ROMs or other file types:
-
-- Duplicate a profile, choose **Other / Custom**, and reset its rules.
-- Enter the exact extensions to display, for example `nes, sfc, smc, gba, gb, gbc, n64, nds, chd, iso, zip, 7z`.
-- Set the destination root and optional folder rules, then Save.
-
-Custom defaults disable cleanup and parsing, use no item subfolder, and retain the basename and extension, including casing, dots, underscores, repeated spaces and region/version markers. Extensions start empty. `{Title}` uses the basename after any cleanup you explicitly enable; it is also editable per file. There is no ROM-content parsing or archive extraction.
-
-## File operations and recovery
-
-Previews freeze source identity, size, timestamps, SHA-256, parent identity and destination checks. Apply revalidates them. Exclusive filesystem publication prevents overwriting an existing destination; conservative preview checks also detect case/Unicode collisions and duplicate batch outputs.
-
-Copies use an exclusive temporary target, request supported filesystem metadata through `fcopyfile(COPYFILE_ALL)`, and verify the complete payload size and SHA-256 before publication. Same-volume moves use an exclusive rename. Cross-volume moves copy, verify, publish, revalidate the original, and claim the exact source through a journaled holding name before removal. Errors report the actual state and retained/temporary locations. Cancellation stops between files; completed items remain completed and groups are not atomic.
-
-SQLite records frozen plans and per-file transitions with WAL and synchronous FULL. **History & Recovery** exposes results and interrupted operations, including temporary paths. Recovery is journal-assisted and manual: inspect source/destination paths and re-preview retained originals. Nothing is automatically resumed or deleted.
-
-Guarded Undo verifies destination identity/content. Deleting a completed copy needs explicit confirmation. Same-volume move undo refuses occupied original locations or changed files. Cross-volume undo requires a new reviewed operation. Empty folders are left intact.
-
-## Alpha limitations
-
-Use disposable fixtures while evaluating this prototype. Release acceptance is incomplete:
-
-- Some destination traversal/creation remains path based. Hostile concurrent directory replacement and network filesystem semantics need further hardening.
-- Payloads are verified, but resource-fork/xattr/ACL fidelity across differing filesystems is not fully verified.
-- The verified-copy move branch is exercised through injected fixtures; actual cross-device/network moves, disconnects, disk-full and read-only destinations need further integration testing.
-- Case-only file/folder renames now use journaled staging, guarded undo and explicit staged recovery. Automatic crash rollback/cleanup and cross-volume undo remain unimplemented.
-- Categories are direct child folders. Sorting is by filename. Extraction masks are modest; ambiguous interpretations require review. Clean-only batches spanning multiple parent directories may be refused; process one parent at a time.
-- Folder Clean renames explicitly selected direct child folders, validates their contents and offers guarded undo; it does not recursively reorganize nested folder names.
-- No full tag editor, video tag editing, sidecar handling, transcoding, collection inventory, automatic file watching or unattended filing.
-
-See [VALIDATION.md](VALIDATION.md) for the scope of the current fixture checks. Screenshots are intentionally deferred during early development.
-
-## Local data
-
-The stable internal identifier is `com.local.LibraryFiler.Alpha`. Its folder under `~/Library/Application Support/` contains profile settings/bookmarks, the SQLite operation journal and explicitly generated demo folders. The original identifier is retained to preserve existing settings across app renames. Source/library discovery and previews are read-only.
-
-## Artwork
-
-The README and launch splash use the supplied **enhanced bookshelf logo**, saved as `Branding/README-Logo.png`, with the current name and no “the.” The welcome workspace uses `In-App-Logo.png`. The compact 48×48 header uses `Header-Portrait-White.png`; the macOS app icon uses `App-Icon-v3.png`. Supplied originals and image-edit prompts are included in `Branding/`.
-
-The splash shows version/build metadata, dismisses after three seconds, and has a Continue button. Replay it through **Shelf Elf Librarian → Show Welcome Screen**.
-
-## New preparation tools (Build 33)
-
-See [Profile rules, Magic, manual editing and script migration](docs/PROFILE-RULES.md) for the full code-versus-settings guide.
-
-- Per-profile hyphen replacement, periods-to-dashes, folder-name cleanup, smart title casing and single-episode S/E formatting/casing.
-- Ordered literal Find → Replace rules, scoped to Filename/Folder/Both with Anywhere/Prefix/Suffix matching.
-- Configurable artist number/symbol buckets and optional leading-The handling.
-- Editable proposed basenames with preserved extensions, override reset and a selected-name replacement editor.
-- Optional **Use Magic** with original-name, selected-sibling and parent-folder evidence, alternatives and qualitative confidence; no full-library scans or online service. Manual edits are retained and uncertain items require confirmation.
-- Profile-specific correction examples from successful approved operations; explicit Remember/Forget controls. Settings recommendations modify only the draft, and development reports are previewable, anonymized by default and copied only on user action.
-- Explicit folder-clean previews with all affected contents, case-only rename staging, guarded undo and interrupted-stage recovery in History.
-- Clicking the app-header icon/name/version opens the private GitHub repository.
-
-New cleanup/Magic switches default off for existing profiles. No existing library is reorganized or profile rewritten automatically. Screenshot/visual review remains deferred to the user.
-
-### Direct renaming and filing
-
-Use **Rename Selected to Proposed Names** to rename selected visible changed names immediately in their current folders. The per-row boxed checkmark does the same for one file; it is hidden when no rename is needed. Edit a row's basename and press Return or click Save to rename it on disk. Escape cancels uncommitted typing. Neither typing alone nor losing focus renames a file. The original extension is kept.
-
-Successful direct renames update the current filename, turn the proposal green and clear that row's Include selection. The row undo arrow restores the prior actual filename using journaled, guarded undo; it refuses changed files and occupied original names. Failed rows retain their names/selections and show errors. History retains recovery and undo information after a refresh or relaunch; row undo is available during the current session.
-
-Direct renaming never confirms filename components for filing. The **Components** column refers to the right-side component review, which remains independent. Reselect a renamed file when you want to file it. **Clean Preview** remains available for a reviewed batch rename; **File Preview** prepares copy/move operations into the library. Successful direct renames retain their actual basename as an override so subsequent filing keeps a deliberate manual name; refreshing or changing profile recomputes suggestions.
-
-Header buttons sort columns; Include toggles visible selections. General Settings and Profile Settings are both directly available on the main screen. Shared Spelling Exceptions is the first control under Filename cleaning. Hover explanations are non-interactive overlays so they do not consume button clicks.
-
-Profiles default to **Remember confirmed corrections for Magic by default** enabled. This initializes the workspace checkbox when files load; individual selections can opt out. Only successful operations supply correction examples. Existing examples can be forgotten in Recommendations & Learning. No rules or file operations are applied automatically by learning.
+Profiles, bookmarks, preferences, remembered corrections and the SQLite journal stay on your Mac. The main app uses the stable identifier `com.local.LibraryFiler.Alpha`; its support data is under `~/Library/Application Support/`. The Fresh Install Test edition uses a separate identifier and data store. No library file contents, metadata or usage reports are automatically uploaded. GitHub links open only when selected.
 
 ## License & Usage Notice
 
-Shelf Elf Librarian is free, open-source software under the [GNU Affero General Public License, version 3 (AGPL-3.0)](LICENSE). Its standard warranty and liability provisions apply; there is no separate restrictive EULA or custom monetary liability cap.
+Shelf Elf Librarian is free, open-source software under the [GNU Affero General Public License, version 3](LICENSE) (AGPL-3.0, version 3 only). There is no separate restrictive EULA or custom monetary liability cap.
 
-Read the [License & Usage Notice](USAGE-NOTICE.md) for backups, previews, file operations and recovery considerations. This notice does not restrict rights granted by AGPL. The app includes the same notice and complete license, accessible at startup and through **License & Usage Notice…** in the app menu.
-
-The notice appears once per new app version/build or notice version. **Continue** acknowledges the notice locally; it does not accept an additional contract. **Quit** closes the app without acknowledgment, so the notice appears again next launch. AGPL section 9 does not require acceptance merely to run the software.
-
-See [the cross-project Codex handoff](docs/SHARED-TERMS-HANDOFF.md) for reuse and platform considerations.
-
-## Content types and shared spelling
-
-Content type selects interpretation and the editor's filename components. Changing it keeps existing rules, extensions and masks; **Load defaults for this content type** replaces those settings while preserving profile name and destination. Other / Custom starts without media parsing or automatic cleanup.
-
-Spelling exceptions now live in **General Settings** in the app menu and apply to every profile. Profile Settings links to this shared editor. Old per-profile exception lists are ignored, not migrated. Saving the shared list refreshes the workspace, clearing pending proposals and selections.
-
-Video, Music and Audiobook expose **Season/episode capitalization** (Keep original, Uppercase, Lowercase), separate from separator formatting and whole-episode-filename lowercasing. Keep original protects indicator letter case from title and whole-name casing. Explicit indicator case wins over whole-name lowercasing; shared spelling exceptions apply last. Documents and Other / Custom do not apply these episode rules. Extensions are preserved. Example: `Show s01e01 Pilot` can become `Show - S01E01 - Pilot` when formatting and Uppercase are enabled.
-
-### Seeing proposed differences
-
-The current filename marks removed or replaced characters in red. The proposed-name input highlights replacement or added characters in blue while not focused; editing uses ordinary text. **Show changes** expands an actual-difference summary and comparison using visible space (`·`) and tab (`⇥`) markers. These markers are display-only, never inserted into filenames. Filename text is slightly larger. Comparisons are cached per displayed row and recomputed when its filename/proposal changes; long names use a bounded fallback. This changes presentation only, not cleaning or rename behavior.
-
-Build 33 strengthens red source highlights and adds changed-character hover descriptions without inserting marker characters in filenames. The general editor tooltip is removed; focused editors show “Enter to rename · Esc to cancel” below the input. Workspace and library Reveal in Finder actions select the folder in Finder rather than opening its contents.
-
-Build 33 uses a single fully opaque, click-through native hover panel above the list. Scrolling, clicking, typing, leaving its target, loss of window focus, and changes to its target clear it. Helpers appear on actual mouse movement rather than appearing from row relayout alone. **Show Workspace/Library in Finder** opens the folder contents.
-
-Clear season/episode spacing such as `s01e 10` or `s 01 e 10` is repaired before ordinary cleanup for supported content types with episode handling enabled. Indicators are protected during title casing and literal replacement; episode separator formatting and the explicit capitalization choice run afterward. Split digits are not guessed. Broad filename hyphen conversion and whole-episode lowercasing have been removed; use explicit replacement rules for targeted conversions.
-
-Show changes includes **Rules triggered**, recorded from cleanup stages that actually changed text during basic interpretation. Enabled rules with no effect are omitted. Manual filename overrides are identified separately. Magic interpretation currently reports when per-rule attribution is unavailable rather than guessing from the final difference; output masks and component edits can also change the final name independently of cleanup.
-
-Build 33 keeps literal filenames in rows and replaces changed whitespace only in expanded comparisons with explicit display labels such as `[[SPACE]]`, `[[SPACES × 2]]`, and `[[TAB]]`. One warning identifies any reserved labels that also occur literally in the filenames. Case-only word changes use “Corrected preferred case” hover wording. Filename component inputs retain labels above their values; the right panel has no fixed maximum width and can be widened with the divider, subject to the file list’s minimum width.
-
-## Universal spelling, case and title-word preferences
-
-General Settings groups **Universal Spelling & Case Preference Exceptions** into Abbreviations & acronyms; People, artists & organizations; Brands, products & platforms; Formats & technical terms; Editions, regions & identifiers; and Other preferred spellings. Commas and line breaks separate entries. Groups are organizational only: every entry applies to every profile. Display-only examples are not saved entries. The selectable gray combined list previews exactly what Save will activate. Identical entries are deduplicated, and conflicting capitalization blocks Save until resolved. Existing app-wide exceptions are retained in Other; old profile lists are not merged.
-
-Removable labels delete matching text before exceptions apply. An exception does not preserve or restore a removed label: `1080p` can be removed by one profile but retained in its preferred case by another. Overlaps are informational. Preferred entries protect their punctuation and normalize spaces around internal hyphens before parsing and cleanup. They do not perform fuzzy spelling correction. Extensions are preserved.
-
-**Universal lowercase title words** is a separate shared list in General Settings. Each profile still enables Title case and Smart title casing independently. When enabled, it uses the shared list; explicit exceptions win afterward. Old profile-specific title-word lists are ignored. Save refreshes the workspace, clearing pending proposals and selections.
-
-Episode-component hover explanations distinguish preferred-case changes, spacing repairs and numeric padding, including when more than one applies to the same component.
-
-## Advisory filename spelling checks
-
-Unrecognized words in source basenames receive solid amber underlines on the current filename, independent of red/blue rename differences. Show changes lists the words and explains that names, invented words and foreign-language titles may be intentional. The details remain available when the filename itself needs no changes. These warnings never block renaming/filing or affect component confirmation. There are no spelling hovers, suggested replacements or automatic corrections.
-
-Checks use macOS NSSpellChecker's background spelling service and preferred languages, checking lowercase words and caching results by word/languages. Matching universal exceptions (including complete multiword entries), recognized episode indicators and numeric identifiers are excluded. Extensions are not checked. General Settings offers **Flag unrecognized filename words**, enabled by default. The current filename carries the underlines; proposed-name inputs are reserved for rename differences. Spelling results refresh when the source basename or universal exceptions change.
-
-## Suggested entries and protected text
-
-**Load Suggested Entries** at the top of General Settings asks for confirmation, then appends missing suggestions to the settings draft. Matches are checked case-insensitively across all groups: existing entries remain in their current groups, identical suggestions are skipped, and conflicting suggested capitalization is skipped in favor of the user’s entry. Counts report added, existing and conflicting entries. Save commits; Cancel discards. No suggestions are added to Other. Fresh installations use alphabetized, comma-separated defaults in the other groups, with no embedded line breaks; existing installations are not automatically changed.
-
-Preferred entries are recognized before delimiter parsing and protected through destructive cleanup. For example, `ac - dc - song name.mp3` can suggest `AC-DC - Song Name.mp3` without splitting AC and DC into separate components. Matches require complete letter/number boundaries; `BAC-DC`, `BAC-DCE` and `AC-DCE` do not match AC-DC. Ordinary cleanup can still affect those unmatched names. Removable labels take precedence, including when a removable label is also a preferred entry. Compiled matching patterns are cached.
-
-Spelling warnings use a **solid amber underline**. Show changes lists dictionary checking separately from Rules triggered because checking is advisory and does not modify names.
-
-## Books, comics and additional music components
-
-Content type **Books & Comics** has Mixed, Audiobook, Ebook and Comic subtypes. Existing Audiobook profiles retain the Audiobook subtype. Choose a subtype, then use **Load defaults for this content type** if you want to replace the current extensions/masks with its defaults; changing subtype alone preserves custom rules.
-
-Shared book components: Author, Title/BookTitle, Series, SeriesNumber, Publisher and Year. Audiobooks add Narrator, ChapterNumber and ChapterTitle. Comics add Illustrator, IssueNumber and Volume. `{Title}` aliases the book title for this content type. Examples: `{Author}/{Publisher}/{BookTitle}` as folders, or `{Series} - {IssueNumber} - {BookTitle}` as a filename. A component is required only when the chosen output mask references it.
-
-Music adds `{Year}`, `{TrackNumber}`, `{TrackNumber:02}`, `{RecordingType}` and optional `{Live}`. Recording type is Unspecified, Live or Studio. Unspecified is never inferred to mean Studio. `{Live}` outputs `(Live)` only for Live and is otherwise blank; adjacent extra whitespace from its omission is tidied. Example: `{TrackNumber:02} - {Artist} - {Title}`. The default music filename remains `{Artist} - {Title}`.
-
-A leading numbered section can supply TrackNumber. Explicit parenthesized years and bracketed Live/Studio labels can supply Year/RecordingType, but are retained in Title to avoid silently deleting information. Other new components are supplied by extraction masks or manual entry. These features do not read embedded tags or infer publishers, narrators or illustrators from absent evidence. All new values participate in journal serialization and correction reports; legacy records decode with empty optional components.
-
-Build 33 moves spelling warnings to the current/source filename, leaving the proposal's red/blue difference display separate. Workspace controls show **Show Workspace in Finder** before **Currently open Workspace:** and the path. Selection/rename buttons precede the filename filter. Profile Settings keeps the profile name in its fixed heading and separates the scrolling form from fixed footer actions with a divider and padding. A single status bar prevents overlapping cancellation controls and labels discovery cancellation **Cancel Scan**. Additional General Settings proposals and the lower-right filing actions are unchanged.
-
-Build 34 makes Magic explicit: **Run Magic on Selected Files** above the file list analyzes selected visible files only, in the background, with cancellation between files. Startup, workspace/profile switches, Refresh and settings saves discover files and run ordinary cleanup without Magic. The former profile-level Use Magic switch and lower-right Analyze Selected button are replaced by this action; remembered corrections remain a separate opt-in. Cancelling Magic retains existing proposals.
-
-General Settings now includes **Show filename differences** (red/blue highlighting only; spelling underlines remain independent), **Hover help** (Immediate, Short delay of half a second, Off), and **Default filing action** (Copy or Move, with Copy as the initial default). Hover timing covers application help panels and character-change explanations. The filing default takes effect at app startup; the workspace Operation selector overrides it for the current session. Existing saved preferences retain the previous display defaults. Other lower-right filing controls are unchanged.
-
-Build 35 restores **Enable Magic for this profile** in Profile Settings, preserving each profile's saved value. Enabled profiles show the wand icon and **Magic enabled** beneath the profile picker. **Run Magic on Selected Files** appears only for enabled profiles and requires a selected visible file. Magic remains manual; discovery and refresh never run it automatically.
-
-Build 38 connects bulk filename-component edits to episode proposals. Recognized TV episodes leave Title blank and use Series, Season, Episode and Episode Title. Legacy video `{Title}` / `{TitleYear}` masks render the assembled episode name, so editing Series or Season updates each selected file's proposal while retaining its own episode number/title. Movies retain Title/Year behavior. Editing components supersedes a manual filename override; typing alone does not touch files. **Rename Selected to Proposed Names** applies reviewed proposals in the current folders without requiring component confirmation for filing.
-
-The component editor repeats the current filename beneath its heading (identifying the example when multiple files are selected). Clicking current filenames, type/size, review status or unused row space selects that file alone; checkboxes retain bulk selection and existing editor/buttons keep their actions. The Magic indicator aligns to the dropdown's left edge. The filter includes a clear button and an eligible-result count; **Show excluded filenames** sits beside the lower-left eligibility summary. Filtering does not change eligibility or selection counts.
-
-Build 39 adds on-demand macOS spelling suggestions through **Suggestions…** beside unknown words in Show changes and a contextual menu on amber-underlined source words. Both offer manual replacement when needed. A choice replaces complete matching words in that file's existing proposal, preserving its other edits and extension; universal case preferences apply to the replacement. No disk changes occur until Rename. Show changes provides **Undo spelling replacement** for the latest proposed correction, guarded against later edits; the source warning remains until the source is renamed. The app does not change the system's learned or ignored words.
-
-Existing-folder cleanup is now **Tools → Clean Folder Names…**. The chooser and review identify the active profile. A separate **Smart title case (existing folder names)** preference defaults on; universal preferred spellings/punctuation and universal lowercase title words apply, along with folder replacements and the folder hyphen setting. Generated destination-folder behavior is unchanged. Preview explains applied rules or why no change is needed. Only selected direct child folder names are changed, with the existing collision, content-validation, journal and undo guards; child names and contents remain unchanged.
-
-## Configurable interpretation and filing — Build 40
-
-Profile Settings now includes ordered **Workspace Filename Patterns & Filing Types** with tests against example names or selected files. Patterns capture components, assign a classification from a dropdown or read it from a filename, and map Type/System/Genre to relative folder and filename layouts. Video, music genres, ROM systems, FORGE game names, book series hierarchies and additional custom captures share the same engine. Unknown captured classifications require review. Magic remains manual.
-
-New content types are **Video Game ROMs**, **Photos**, and **Software & Installers**. Nine starter profiles are preloaded on new installations, including FORGE and separate audiobook/ebook profiles. Music buckets remain music-specific. Optional `{Series?}` folder levels and `{BookFolder}` support standalone and numbered-series books. Parent-folder interpretation is available explicitly and is disabled by default in audiobook starters. No embedded media or photo tags are read.
-
-Existing profiles migrate after an automatic settings backup. Legacy extraction masks and compatibility rows are removed; editable patterns are used for filename extraction. Category folders are folded into masks, preserving destinations and bookmarks. **Description / Notes** is optional multiline profile text and travels with settings exports. Notes do not affect interpretation or learning signatures.
-
-**Tools → Export Settings / Import Settings** saves/restores profiles and General Settings. Import confirms replacement and saves a backup first. Library files and history remain separate. A separately signed **Fresh Install Test** app uses isolated preferences, profiles and history. See [pattern documentation](docs/FILENAME-PATTERNS.md) and the [fresh-install review guide](docs/FRESH-INSTALL-REVIEW.md). GitHub publishing remains on hold.
-
-Build 41 gives all nine starter profiles default descriptions and organization recommendations. Each begins with the same optional-starter paragraph. FORGE includes the project link and approved explanatory text. Existing matching profiles receive descriptions only when Notes was never set; custom notes and intentionally cleared notes are preserved. Profile rules and destinations are unchanged.
-
-Build 42 updates the main workspace presentation: native toolbar with logo/version, compact workspace/file controls, a narrower inspector with an empty selection state, contextual movie/episode fields, clearer name/filing statuses, and a compact combined filing area. All editable proposals, row checkmark/save/undo actions, spelling/difference review, immediate rename behavior and existing preview operations remain. Splash, About and blank-workspace art are retained. Build 41 is saved as local tag `build-41-before-layout` and app/source copies under `outputs/checkpoints/build-41`; see [rollback notes](docs/WORKSPACE-LAYOUT-ROLLBACK.md).
-
-Build 43 removes macOS 26 toolbar group backgrounds from the brand/profile controls and hides the duplicate native title while retaining window accessibility text. Editable filename proposals have a stronger always-visible border and subtle fill. Hover help sizes to content and stays within its owner window's visible screen intersection. About uses the large wordmark logo in an owner-centered child window; Help now provides in-app instructions in the same anchored presentation. Workspace, folder, destination and settings import/export choosers use attached sheets; import confirmation is attached as well. File-operation and rename behavior is unchanged.
-
-
-Build 55 makes the Media Categories enable switch reveal its settings directly. Copy/Move previews group files by destination folder, with counts and a separate Needs attention group. Successful operations deselect completed files; blocked, failed and unprocessed files retain selection. Every Move refreshes the workspace, preserving edits on remaining source files and the operation summary, including after partial completion or cancellation.
-
-If the library path now identifies a replacement folder, the app explains that the path is still configured and offers **Use This Folder** or **Cancel**. Accepting saves the replacement identity and rebuilds the preview; execution requires confirmation again. Destination identity checks remain enforced during execution.
-
-Music profiles have an optional **Move leading “The” to end of artist name** setting, off by default. For example, The Beatles becomes Beatles, The in Artist components, generated names, folders and artist buckets. **Ignore leading The for bucket only** remains a separate option, also off by default. Neither option edits embedded tags. Other preferred spellings now uses display-only examples LaTeX, myCustomName and iMonkey; saved entries and suggested defaults are unchanged.
-
-
-Build 56 adds read-only MP3 ID3v1, ID3v2.2–2.4 and APEv2 inspection, including unknown/binary frame indicators and collapsed long text. Different spellings/case remain visible differences; track/episode padding and track totals compare numerically. Metadata is advisory and never blocks filing. Reading is bounded to 16 MB per MP3 tag and 2,048 frames/items; malformed, encrypted, compressed or oversized tags show reading notes or opaque frame indicators. The popup limits very long text display to 65,536 characters. Artwork is identified without loading images. Supported video metadata supplements missing mask components during discovery and Magic, with evidence showing its source. Existing selection, filing validation and byte-preserving copy/move behavior remain in place.
-
-
-Build 57 adds relevance sections in metadata details: differences first, then Artist, Title, Album, Release Year, Track Number and other mapped fields, followed by other tags. Original tag sources and duplicate versions remain visible. “Use Tag for…” changes only that file’s proposed component; choices stay in the open popup. Review Proposed Filename focuses the row editor. Enter renames; Esc restores the proposal and components from before that tag-choice session. “Show proposed changes” distinguishes proposals from disk changes; spelling-only details use their own label.
-
-In Music profiles, **Tools → Update MP3 Tags from Components…** reviews differing or missing supported tags for selected visible MP3 files, with all proposed changes checked by default. Fields or entire files can be unchecked. Nonempty Artist, Title, Album, Year, Track Number and Genre components supply values; blank fields never erase tags. No Magic analysis runs, and filenames, unrelated tags and artwork remain unchanged. **Tools → Purge Other MP3 Tags…** instead offers removals based on **Profile Settings → Build names & folders → MP3 Tags to Keep on Purge**. All options default on, including artwork, comments, lyrics and other/custom tags, so the initial policy removes nothing. Standard comments and custom user text are separate keep categories. Non-MP3 selections are reported as skipped. Both tools require a final confirmation and have **no Undo or retained file backup**.
-
-Tag writing preserves the existing ID3v2.2/2.3/2.4 version and unselected raw frames, synchronizes selected fields in existing ID3v1 and APEv2 tags, preserves file attributes, verifies unchanged audio bytes, and uses an atomic replacement after source revalidation. Unsupported headers, extended/global encoding flags, appended/multiple leading ID3 tags, hard links, corrupt tags, protected selected frames and unrepresentable legacy values are blocked with a reason in the preview. Full legacy tags may need conversion in TagCraft first. Normal temporary replacements are removed after success; exceptional failures can retain a recovery path reported in History.
-
-Operation events, folder events and associated expired stored plans are automatically removed after **30 days** at startup, when History loads, after operations and hourly while the app is running. Expired Undo is refused. Explicitly remembered Magic corrections persist separately; Forget continues to exclude them. History cleanup does not delete source, destination, partial or recovery files. Database space is compacted after pruning when available. Settings backups and previous development app bundles keep their existing behavior.
-
-
-Build 58 adds two Music profile options under **Magic & learning**: **Update MP3 tags from components when running Magic** and **Purge MP3 tags when running Magic**, both off by default. Every Magic run requires the warning/confirmation, showing the profile, file count, proposed destination names, Copy/Move choice and enabled tag steps. The final button names the operation, for example **Run Magic & Move 10 Files**; there is no option to suppress confirmation. Purge uses the profile’s MP3 Tags to Keep on Purge list (all kept by default, including artwork). Rows summarize intended tag changes, and unsupported tag steps block affected files before execution. Other media types are filed without tag changes.
-
-Magic prepares components and filenames first. On a private library staging copy, it then updates tags from nonempty components if enabled, followed by purge if enabled, before publishing the final library file. Purge wins when an updated tag is not in the keep list. Existing byte/audio verification is retained; completion records identify the published file’s resulting hash. Copy leaves workspace originals unchanged. Move retains the original until all preparation, publication and source revalidation succeed, including for moves on the same volume. Tag-step failure never publishes that file; cancellation stops between files and may leave earlier completed files in the library. Ordinary Copy/Move previews and Keep Current Filenames never run these optional steps. Changed-tag Magic operations have no automatic Undo or retained backup; history continues to describe recovery paths for failures. Existing files/settings remain unchanged by either default-off option until an explicitly confirmed run.
-
-### Build 59
-
-Settings consistently use Library location and MP3 Tags to Keep on Purge. Smart title case help links the per-profile switches to the shared editable lowercase-word list; its defaults remain unchanged. Mask reference explains braces and fixed text. Broad hyphen conversion and whole-episode lowercasing are removed across profiles.
-
-Documents profiles support custom captured components throughout patterns, component editing and output masks. The new-install FORGE starter uses GameTitle and ResourceName. Music and Video retain built-in captures. Audiobooks support optional SeriesName, sharing the existing Series value. ROM extension-to-System mappings route to configurable system folders while preserving original filenames. Ambiguous formats require explicit System information; linked disc/playlist directories are blocked from individual filing.
+The [License & Usage Notice](USAGE-NOTICE.md) explains file-operation and recovery considerations without adding restrictions to the license. The app displays it once per new app version/build or notice version, with access to the full license. **Continue** records acknowledgment locally; **Quit** exits without recording it. It can be reopened through **License & Usage Notice…** in the app menu.
