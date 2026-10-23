@@ -18,14 +18,13 @@ public enum Names {
         protected = ProtectedSpellings(s, exceptions: p.exceptions)
         s = protected!.text
         checkpoint("Universal preferred spelling protection")
-        let handlesEpisodes = p.supportsEpisodes && (p.titleCase || p.rules.formatEpisodes || p.rules.episodeCase != .keep || p.rules.lowercaseEpisodeTitle)
+        let handlesEpisodes = p.supportsEpisodes && (p.titleCase || p.rules.formatEpisodes || p.rules.episodeCase != .keep)
         if handlesEpisodes { s = RuleEngine.normalizeEpisodeSpacing(s) }
         checkpoint("Episode spacing repair")
         if p.replaceUnderscores { s = s.replacingOccurrences(of: "_", with: " ") }
         checkpoint("Underscores to spaces")
         // Preserve numeric decimal separators and dotted initials; other configured separator dots become spaces.
-        if p.rules.hyphensToSpaces { s = s.replacingOccurrences(of: #"[-‐‑‒–—]+"#, with: " ", options: .regularExpression) }
-        checkpoint("Hyphens to spaces")
+        // Hyphen conversion was removed; use explicit replacement rules instead.
         if p.rules.dotsToDashes { s = s.replacingOccurrences(of: ".", with: " - ") }
         else if p.replaceDots {
             let chars = Array(s)
@@ -64,10 +63,6 @@ public enum Names {
                 s = [episode.series, id, episode.title].filter { !$0.isEmpty }.joined(separator: " - ")
             }
             checkpoint("Episode separator formatting")
-            if p.rules.lowercaseEpisodeTitle, RuleEngine.episode(s) != nil {
-                s = RuleEngine.protectEpisodes(s, { $0.lowercased() }, capitalization: .keep)
-            }
-            checkpoint("Whole episode filename lowercase")
             s = RuleEngine.protectEpisodes(s, { $0 }, capitalization: p.rules.episodeCase)
         }
         checkpoint("Episode capitalization")
@@ -98,24 +93,6 @@ public enum Names {
         if p.kind == .video, let ep = episodeComponents(original, profile: p) {
             f.title = ""; f.series = cleanField(ep.series, p, record: record); f.season = ep.season; f.episode = ep.episode; f.episodeTitle = cleanField(ep.title, p, record: record)
             return (f, "Original filename contains a season/episode identifier. No online lookup.", false)
-        }
-        if !p.extractionMask.isEmpty {
-            let token = try! NSRegularExpression(pattern: "\\{([A-Za-z]+)\\}")
-            let ns = p.extractionMask as NSString; let matches = token.matches(in: p.extractionMask, range: NSRange(location: 0, length: ns.length))
-            var pattern = "^", offset = 0, keys: [String] = []
-            for m in matches { pattern += NSRegularExpression.escapedPattern(for: ns.substring(with: NSRange(location: offset, length: m.range.location - offset))); pattern += "(.+?)"; keys.append(ns.substring(with: m.range(at: 1))); offset = m.range.location + m.range.length }
-            pattern += NSRegularExpression.escapedPattern(for: ns.substring(from: offset)) + "$"
-            let protectedInput = ProtectedSpellings(original, exceptions: p.exceptions)
-            let input = protectedInput.text
-            if let regex = try? NSRegularExpression(pattern: pattern), let m = regex.firstMatch(in: input, range: NSRange(input.startIndex..., in: input)) {
-                for (i, key) in keys.enumerated() { let value = cleanField(protectedInput.restore((input as NSString).substring(with: m.range(at: i + 1))), p, record: record); switch key { case "Title": f.title = value; case "Year": f.year = value; case "Artist": f.artist = value; case "Album": f.album = value; case "Author": f.author = value; case "BookTitle": f.bookTitle = value; case "ChapterNumber": f.chapterNumber = value; case "ChapterTitle": f.chapterTitle = value; case "Series": f.series = value; case "Season": f.season = value; case "Episode": f.episode = value; case "EpisodeTitle": f.episodeTitle = value; case "Date": f.date = value; case "Revision": f.revision = value; case "Narrator": f.narrator = value; case "Publisher": f.publisher = value; case "Illustrator": f.illustrator = value; case "IssueNumber": f.issueNumber = value; case "Volume": f.volume = value; case "SeriesNumber": f.seriesNumber = value; case "TrackNumber": f.trackNumber = value; case "RecordingType": f.recordingType = value; default: break } }
-                if p.kind == .audiobook {
-                    if p.extractionMask.contains("{Title}") && !p.extractionMask.contains("{BookTitle}") { f.bookTitle = f.title }
-                    if !f.bookTitle.isEmpty { f.title = f.bookTitle }
-                }
-                return (f, "Matched extraction mask: \(p.extractionMask). Review the fields.", false)
-            }
-            return (f, "Extraction mask did not match.", false)
         }
         switch p.kind {
         case .video:
@@ -180,6 +157,7 @@ public enum Names {
         let titleYear = title + (f.year.isEmpty || title.contains("(" + f.year + ")") ? "" : " (\(f.year))")
         var values = ["Title": title, "Year": f.year, "Artist": f.artist, "Album": f.album, "Author": f.author, "BookTitle": f.bookTitle, "ChapterNumber": f.chapterNumber, "ChapterTitle": f.chapterTitle, "TitleYear": title.isEmpty ? "" : titleYear, "AlbumOrIndividual": f.album.isEmpty ? p.individualTracks : f.album, "Bucket": RuleEngine.bucket(artist: f.artist, profile: p), "ChapterOrBook": f.chapterNumber.isEmpty ? f.bookTitle : clean(source.deletingPathExtension().lastPathComponent, p)]
         values.merge(["Series": f.series, "Season": f.season, "Episode": f.episode, "EpisodeTitle": f.episodeTitle, "Date": f.date, "Revision": f.revision, "EpisodeID": ""]) { _, new in new }
+        for key in PatternEngine.customComponents(p) { values[key] = f.custom?[key] ?? "" }
         values.merge(FieldCatalog.values(f)) { old, _ in old }
         values["Resolution"] = FieldCatalog.normalizedResolution(f.resolution)
         values["BookFolder"] = (f.seriesNumber.isEmpty ? "" : f.seriesNumber + " - ") + (f.bookTitle.isEmpty ? f.title : f.bookTitle)
@@ -305,9 +283,9 @@ public func makePlan(items: [Item], profile p: Profile, mode: Mode, category: St
     guard !p.folderMask.hasPrefix("/") else { throw fail("Folder masks must be relative to the configured root.") }
     if mode != .clean { if category.isEmpty && !p.rootAllowed { throw fail("Choose and confirm a destination category.") }; if !category.isEmpty { try component(category) }; if !p.fixedCategory.isEmpty && category != p.fixedCategory { throw fail("Confirm the fixed category: \(p.fixedCategory)") } }
     if mode != .clean {
-        guard !p.root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw fail("Library destination not configured. Choose Profile Settings → Profile & destination → Choose Destination Root before copying or moving files.") }
-        guard p.root.hasPrefix("/"), !p.root.contains("//"), !p.root.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw fail("Library destination is not a valid absolute folder path. Reconnect it using Choose Destination Root in Profile Settings.") }
-        do { _ = try Directory(p.root) } catch { throw fail("Library destination is unavailable: \(p.root). Reconnect it using Choose Destination Root in Profile Settings. \(error.localizedDescription)") }
+        guard !p.root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw fail("Library destination not configured. Choose Profile Settings → Profile & destination → Choose Library Location before copying or moving files.") }
+        guard p.root.hasPrefix("/"), !p.root.contains("//"), !p.root.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw fail("Library destination is not a valid absolute folder path. Reconnect it using Choose Library Location in Profile Settings.") }
+        do { _ = try Directory(p.root) } catch { throw fail("Library destination is unavailable: \(p.root). Reconnect it using Choose Library Location in Profile Settings. \(error.localizedDescription)") }
     }
     let root = try Directory(mode == .clean ? items[0].url.deletingLastPathComponent().path : p.root)
     if mode != .clean, let identity = p.rootIdentity { guard root.device == identity.device, root.inode == identity.inode else { throw fail("The library folder at \(p.root) has been replaced. The path is still configured, but it now refers to a different folder. Preview again to confirm Use This Folder, or reselect it in Profile Settings.") } }
@@ -315,6 +293,7 @@ public func makePlan(items: [Item], profile p: Profile, mode: Mode, category: St
     for item in items {
         var row = PlanRow(source: item.url.path, destination: "", status: "Needs review", explanation: item.evidence, group: item.fields.bookTitle)
         do {
+            if p.kind == .roms { try ROMRouting.validateOperation(item.url, renaming: mode == .clean) }
             guard item.reviewed else { throw fail("Needs review: confirm the interpreted fields.") }
             let name = fileOnly ? item.url.lastPathComponent : try proposedFilename(item, profile: p)
             try component(name)
@@ -354,7 +333,7 @@ public func makePlan(items: [Item], profile p: Profile, mode: Mode, category: St
             }
             if !fileOnly { row.correction = ConfirmedCorrection.make(item: item, profile: p, finalName: name) }
             if item.overrideBasename != nil { row.explanation += "\nManual filename override (extension preserved)." }
-            row.explanation += "\nOriginal: \(item.url.lastPathComponent)\nProposed: \(name)\nRemoved tokens: \(p.removeTokens.isEmpty ? "none" : p.removeTokens)\nUnderscores: \(p.replaceUnderscores); separator dots: \(p.replaceDots); title case: \(p.titleCase). Magic analyzed: \(!item.alternatives.isEmpty); hyphens to spaces: \(p.rules.hyphensToSpaces); dots to dashes: \(p.rules.dotsToDashes); episode format: \(p.rules.formatEpisodes); episode capitalization: \(p.rules.episodeCase.rawValue); literal replacements: \(p.rules.replacements.filter(\.enabled).count)."
+            row.explanation += "\nOriginal: \(item.url.lastPathComponent)\nProposed: \(name)\nRemoved tokens: \(p.removeTokens.isEmpty ? "none" : p.removeTokens)\nUnderscores: \(p.replaceUnderscores); separator dots: \(p.replaceDots); title case: \(p.titleCase). Magic analyzed: \(!item.alternatives.isEmpty); dots to dashes: \(p.rules.dotsToDashes); episode format: \(p.rules.formatEpisodes); episode capitalization: \(p.rules.episodeCase.rawValue); literal replacements: \(p.rules.replacements.filter(\.enabled).count)."
         } catch { let message = error.localizedDescription; row.status = message.hasPrefix("Missing") ? "Missing required value" : message.contains("conflict") ? "Destination conflict" : "Needs review"; row.explanation += "\n" + message }
         rows.append(row)
     }

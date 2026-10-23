@@ -34,7 +34,7 @@ Examples:
 - Commercial: `Commercials`
 - ROMs: profile folder mask `{System}`
 - Music by genre: `{Genre}/{Artist}/{AlbumOrIndividual}`
-- FORGE: folder `{Game}`, filename `{Game} - {Title}`
+- FORGE: input `{GameTitle} - {ResourceName}`, folder `{GameTitle}`, filename `{GameTitle} - {ResourceName}`
 
 Masks determine layout; they do not infer missing values. Output placeholders come from the matched rule or manual component edits. A manually edited proposed filename still overrides the filename mask for that item. Changing a component clears that override so proposals use the edited components.
 
@@ -53,9 +53,9 @@ The audiobook starter also includes disabled parent-folder patterns. Enable one 
 
 Before migrating old saved profiles, the app saves an importable settings archive alongside the normal profiles file. Existing IDs, names, notes, extensions, masks, destinations and bookmarks remain preserved. A fixed Category is folded into the beginning of the folder mask rather than changing the library root. Undo history is unchanged.
 
-The enabled **compatibility interpretation** row preserves the prior permissive parser and legacy extraction mask. Suggested editable rows are pre-populated but disabled below it. Enable and move the relevant rows above compatibility, test them, and then disable compatibility if you want patterns exclusively. This avoids quietly changing proposals when upgrading. Suggested classifications inherit existing masks on migrated profiles; configure route overrides explicitly. New installs use editable rules and starter route mappings immediately.
+Legacy extraction masks and compatibility interpretation rows have been removed. Existing editable patterns are retained; profiles that used compatibility receive editable starter patterns. Review their order and test representative names before filing.
 
-The compatibility recognizer and reusable token handlers remain code. Explicit rules, their order, assigned classification and routing masks are settings. Manual Magic still offers additional filename/folder interpretations and remembered corrections; it never runs automatically. Settings changes may make older remembered examples ineligible for automatic reuse, but their history is retained. Notes alone do not invalidate learning signatures.
+Documents profiles can capture their own named components, for example `{GameTitle} - {ResourceName}`. Captured names appear in Filename Components and can be used in output masks, including optional folder levels. Music and Video input patterns retain fixed built-in components and metadata mappings.
 
 ## Scope
 
@@ -85,7 +85,7 @@ Year-first defaults accept `({Year}) - {Title}`, `({Year}) {Title}`, and `{Year}
 
 Every content type uses Profile & destination → Read filenames → Clean components → Build names & folders → Magic & learning. Video exposes Movie and TV Show mapping masks directly; advanced type overrides remain in Filing Types. Examples and component references follow content type/book subtype.
 
-New video/music/book profiles enable smart title case. New video profiles also enable hyphens-to-spaces and episode formatting and start with no removable labels. Existing cleanup choices are not overwritten. ROM/photo/software/custom cleanup stays conservative. Magic remains opt-in.
+New video/music/book profiles enable smart title case. New video profiles also enable episode formatting and start with no removable labels. Existing cleanup choices are not overwritten. ROM/photo/software/custom cleanup stays conservative. Magic remains opt-in.
 
 Period handling has one choice: Keep periods, Separator periods → spaces, or All periods → spaced hyphens. A legacy profile with both transformations enabled must select one before saving. Existing saved files can still be opened for correction; no automatic choice is made.
 
@@ -132,3 +132,11 @@ Unmatched videos has a final Use Library Root option. It bypasses only category-
 Older enabled video profiles are supplied missing built-in Type definitions required by their category rules. Existing custom Type names, layouts, patterns and category mappings are retained. Equivalent aliases are reused, and the repair is idempotent. Unknown custom layouts still require an explicit correction in Advanced.
 
 Profile Save writes atomically before publishing model changes or dismissing settings. Validation and write failures say Profile not saved, keep the draft open and reveal the error. Existing unreadable/corrupt settings are not silently replaced with starters during startup. Fixtures exercise successful write/reload, failed writes, retained prior data and compatibility repair. Choices from a previous failed Save were never persisted and must be selected again.
+
+## ROM organization
+
+ROMs retain their original filenames, including punctuation, case and region/revision markers. Automatic output filename masks do not rename ROM files; a manual filename edit remains explicit. In Workspace Filename Patterns & Filing Types, extension mappings identify System for clear extensions (nes, sfc/smc, gb, gbc, gba, n64/z64/v64, nds, 3ds). System mappings choose library folder masks, or inherit `{System}`. The mappings are editable and can be removed.
+
+Shared formats such as iso, bin, chd, zip and 7z have no default system inference. Capture `{System}` from filenames or parent folders, or choose it manually. Explicit captured Systems take priority over extension mappings; discrepancies are shown in evidence. Unknown/missing Systems require review. No archives are inspected. Folders containing cue, m3u/m3u8, gdi, ccd or mds descriptors are conservatively blocked from individual copy, move and rename operations; keep linked sets together outside this workflow.
+
+Audiobooks accept `{SeriesName}` as an alias of `{Series}`. The starter folder mask is `{Author}/{SeriesName?}/{BookFolder}`; empty series levels are omitted. Both numbered-series and unnumbered Author - SeriesName - BookTitle patterns are provided.

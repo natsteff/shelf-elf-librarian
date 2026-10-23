@@ -174,6 +174,7 @@ public enum RuleEngine {
 }
 public func proposedBasename(_ item: Item, profile: Profile) throws -> String {
     if let override = item.overrideBasename { try component(override); return override }
+    if profile.kind == .roms { return item.url.deletingPathExtension().lastPathComponent }
     let route = try MediaRouting.context(fields: item.fields, source: item.url, profile: profile)
     return try Names.render(route.filenameMask, fields: route.fields, profile: profile, source: item.url, folder: false)
 }

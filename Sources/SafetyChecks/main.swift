@@ -210,7 +210,7 @@ final class FilerCoreTests {
         p = Profile(.other); p.root = library.path; p.extensions = "rom, pdf"; var rules = p.rules
         rules.hyphensToSpaces = true; p.rules = rules
         let i = try item("My--Game (USA) v1.2.ROM")
-        XCTAssertEqual(try proposedFilename(i, profile: p), "My Game (USA) v1.2.ROM") // no whitespace normalization until enabled
+        XCTAssertEqual(try proposedFilename(i, profile: p), "My--Game (USA) v1.2.ROM") // no whitespace normalization until enabled
         rules.hyphensToSpaces = false; rules.dotsToDashes = true; p.rules = rules
         XCTAssertEqual(Names.clean("one.two.three", p), "one - two - three")
         rules.dotsToDashes = false
@@ -238,12 +238,12 @@ final class FilerCoreTests {
         XCTAssertEqual(fields.season, "01"); XCTAssertEqual(fields.episode, "02")
         XCTAssertEqual(try Names.render("{Series} - {EpisodeID} - {EpisodeTitle}", fields: fields, profile: p, source: URL(fileURLWithPath: "/private/tmp/a.mkv"), folder: false), "My Show - s01e02 - The Elf")
         rules.lowercaseEpisodeTitle = true; p.rules = rules
-        XCTAssertEqual(Names.clean("Show S01E02 The Elf", p), "show - s01e02 - the elf")
+        XCTAssertEqual(Names.clean("Show S01E02 The Elf", p), "Show - s01e02 - The Elf")
         XCTAssertEqual(Names.clean("Non TV Name", p), "Non Tv Name")
         rules.episodeCapitalization = .uppercase; p.rules = rules
-        XCTAssertEqual(Names.clean("Show s01e02 The Elf", p), "show - S01E02 - the elf")
+        XCTAssertEqual(Names.clean("Show s01e02 The Elf", p), "Show - S01E02 - The Elf")
         rules.episodeCapitalization = .keep; p.rules = rules
-        XCTAssertEqual(Names.clean("Show s01E02 The Elf", p), "show - s01E02 - the elf")
+        XCTAssertEqual(Names.clean("Show s01E02 The Elf", p), "Show - s01E02 - The Elf")
         rules.formatEpisodes = false; rules.lowercaseEpisodeTitle = false; p.rules = rules
         XCTAssertEqual(Names.clean("Show s1e2 The Elf", p), "Show s1e2 The Elf")
         rules.episodeCapitalization = .lowercase; p.rules = rules
@@ -487,9 +487,9 @@ final class FilerCoreTests {
         let result = Names.clean("Show - s01e 10 - CLAUDIO", profile) { triggered.append($0) }
         XCTAssertEqual(result, "Show - s01e10 - Claudio")
         XCTAssertEqual(triggered.first, "Episode spacing repair")
-        XCTAssertTrue(triggered.contains("Hyphens to spaces"))
+        XCTAssertFalse(triggered.contains("Hyphens to spaces"))
         XCTAssertTrue(triggered.contains("Title case"))
-        XCTAssertTrue(triggered.contains("Episode separator formatting"))
+        XCTAssertFalse(triggered.contains("Episode separator formatting"))
         XCTAssertFalse(triggered.contains("Underscores to spaces"))
         XCTAssertFalse(triggered.contains("Shared spelling exceptions"))
         XCTAssertEqual(RuleEngine.normalizeEpisodeSpacing("Show s 01 e 10 Pilot"), "Show s01e10 Pilot")
@@ -615,7 +615,7 @@ final class FilerCoreTests {
         XCTAssertEqual(try Names.render(defaults.filenameMask, fields: untitledYear, profile: defaults, source: src, folder: false), "Movie [720p]")
         untitledYear.year = "1999"
         XCTAssertEqual(try Names.render(defaults.filenameMask, fields: untitledYear, profile: defaults, source: src, folder: false), "Movie (1999) [720p]")
-        XCTAssertTrue(defaults.rules.hyphensToSpaces); XCTAssertTrue(defaults.rules.smartTitleCase); XCTAssertTrue(defaults.rules.formatEpisodes)
+        XCTAssertFalse(defaults.rules.hyphensToSpaces); XCTAssertTrue(defaults.rules.smartTitleCase); XCTAssertTrue(defaults.rules.formatEpisodes)
         XCTAssertEqual(defaults.removeTokens, "")
         for kind in Kind.allCases {
             var profile = ProfileSetup.configured(kind, name: kind.label)
@@ -713,7 +713,7 @@ final class FilerCoreTests {
         let forge = try XCTUnwrap(starters.first { $0.name == "FORGE" })
         let url = src.appendingPathComponent("Traveller - Sector Map.pdf")
         let resource = Names.basicInterpret(url, forge).0
-        XCTAssertEqual(resource.game, "Traveller"); XCTAssertEqual(resource.title, "Sector Map")
+        XCTAssertEqual(resource.custom?["GameTitle"], "Traveller"); XCTAssertEqual(resource.custom?["ResourceName"], "Sector Map")
         XCTAssertEqual(try proposedFilename(Item(url: url, size: 0, fields: resource, evidence: "", reviewed: false), profile: forge), url.lastPathComponent)
         var genreMusic = ProfileSetup.configured(.music, name: "Genres")
         genreMusic.workspacePatterns = [WorkspacePattern("{Artist} - {Title} [{Genre}]", type: "@capture")]
@@ -759,7 +759,7 @@ final class FilerCoreTests {
         var notesOnly = migrated; notesOnly.notes = "Changed description"
         XCTAssertEqual(Learning.settingsSignature(notesOnly), Learning.settingsSignature(migrated))
         XCTAssertTrue((migrated.workspacePatterns?.count ?? 0) > 1)
-        XCTAssertTrue(migrated.workspacePatterns?.dropFirst().allSatisfy { !$0.enabled } == true)
+        XCTAssertTrue(migrated.workspacePatterns?.allSatisfy { !$0.compatibility && $0.enabled } == true)
         let archive = SettingsArchive(profiles: [legacy], general: .suggestedDefaults, activeProfileID: legacy.id)
         let restored = try JSONDecoder().decode(SettingsArchive.self, from: JSONEncoder().encode(archive))
         XCTAssertEqual(try restored.validatedProfiles()[0], migrated)
@@ -1126,7 +1126,7 @@ final class FilerCoreTests {
             let url = src.appendingPathComponent("source.epub")
             XCTAssertEqual(try Names.render("{Title} - {Publisher} - {Year}", fields: fields, profile: book, source: url, folder: false), "Book - Publisher - 2024")
             XCTAssertEqual(try Names.render("{Narrator} - {Illustrator} - {IssueNumber} - {Volume} - {SeriesNumber}", fields: fields, profile: book, source: url, folder: false), "Narrator - Artist - 3 - 1 - 2")
-            book.extractionMask = "{Author} - {Title} - {Publisher} - {Year}"
+            book.workspacePatterns = [WorkspacePattern("{Author} - {Title} - {Publisher} - {Year}")]
             let interpreted = Names.basicInterpret(src.appendingPathComponent("Writer - Story - Press - 2024.epub"), book).0
             XCTAssertEqual(interpreted.bookTitle, "Story"); XCTAssertEqual(interpreted.publisher, "Press"); XCTAssertEqual(interpreted.year, "2024")
             XCTAssertEqual(try JSONDecoder().decode(Fields.self, from: JSONEncoder().encode(fields)), fields)
@@ -1244,4 +1244,8 @@ do { try suite.setUpWithError(); try suite.testMagicMP3CancellationAndPartialMov
 do { try suite.setUpWithError(); try suite.testMagicMP3ScopeAndOptionalSteps(); try suite.tearDownWithError(); print("Checked testMagicMP3ScopeAndOptionalSteps") } catch { failures += 1; print("FAIL testMagicMP3ScopeAndOptionalSteps: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testMagicMP3StaleAndCollisionGuards(); try suite.tearDownWithError(); print("Checked testMagicMP3StaleAndCollisionGuards") } catch { failures += 1; print("FAIL testMagicMP3StaleAndCollisionGuards: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testMagicMP3NoopAndPreviewIsolation(); try suite.tearDownWithError(); print("Checked testMagicMP3NoopAndPreviewIsolation") } catch { failures += 1; print("FAIL testMagicMP3NoopAndPreviewIsolation: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 87 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testDocumentDefinedComponents(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL document custom components: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testRemovedLegacySettingsAndSeriesAlias(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL legacy removal and series: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testROMExtensionRoutingAndPreservation(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL ROM mappings: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testROMLinkedSetGuard(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL ROM linked sets: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 91 fixture scenarios"); exit(failures == 0 ? 0 : 1)

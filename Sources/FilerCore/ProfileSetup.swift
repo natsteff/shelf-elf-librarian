@@ -16,7 +16,7 @@ public enum ProfileSetup {
         if kind == .video { profile.mediaRoutingEnabled = false; profile.mediaCategories = MediaRouting.starters; profile.folderMask = "{Title} ({Year?})"; profile.filenameMask = "{Title} ({Year?}) [{Resolution?}]" }
         var rules = profile.rules
         if [.video, .music, .audiobook].contains(kind) { rules.smartTitleCase = true }
-        if kind == .video { rules.hyphensToSpaces = true; rules.formatEpisodes = true; profile.removeTokens = "" }
+        if kind == .video { rules.formatEpisodes = true; profile.removeTokens = "" }
         profile.rules = rules
         profile.extractionMask = ""
         return profile
@@ -84,7 +84,7 @@ public enum ProfileSetup {
         var video = configured(.video, name: "Video Media Server")
         var rules = video.rules; rules.episodeCapitalization = .lowercase; rules.formatEpisodes = true; video.rules = rules
         var audio = configured(.audiobook, name: "Audiobooks", subtype: .audiobook)
-        audio.folderMask = "{Author}/{Series?}/{BookFolder}"
+        audio.folderMask = "{Author}/{SeriesName?}/{BookFolder}"
         audio.filenameMask = "{ChapterOrBook}"
         var parentSeries = WorkspacePattern("{Author}/{Series}/{SeriesNumber} - {BookTitle}"); parentSeries.source = .parentFolders; parentSeries.enabled = false
         var parentBook = WorkspacePattern("{Author}/{BookTitle}"); parentBook.source = .parentFolders; parentBook.enabled = false
@@ -92,20 +92,25 @@ public enum ProfileSetup {
         var ebooks = configured(.audiobook, name: "Ebooks & Comics", subtype: .general)
         ebooks.folderMask = "{Author}/{Series?}/{BookFolder}"; ebooks.filenameMask = "{BookTitle}"
         var forge = configured(.documents, name: "FORGE")
-        forge.workspacePatterns = [WorkspacePattern("{Game} - {Title}")]
-        forge.folderMask = "{Game}"; forge.filenameMask = "{Game} - {Title}"
+        forge.workspacePatterns = [WorkspacePattern("{GameTitle} - {ResourceName}")]
+        forge.folderMask = "{GameTitle}"; forge.filenameMask = "{GameTitle} - {ResourceName}"
         return [video, configured(.music, name: "Music"), audio, forge, configured(.roms, name: "ROMs"), configured(.photos, name: "Photos"), configured(.documents, name: "PDF Library"), configured(.software, name: "Software & Installers"), ebooks].map { StarterDescriptions.fillingBlankNotes($0) }
     }
     public static func migrate(_ input: Profile) throws -> Profile {
-        guard input.schemaVersion < 2 else { return input }
+        if input.schemaVersion >= 2 {
+            var current = input
+            if current.workspacePatterns?.contains(where: { $0.compatibility }) == true {
+                let editable = (current.workspacePatterns ?? []).filter { !$0.compatibility }
+                current.workspacePatterns = editable.filter(\.enabled) + PatternEngine.defaults(for: current).filter { candidate in !editable.contains { $0.pattern == candidate.pattern && $0.enabled } } + editable.filter { !$0.enabled }
+            }
+            if current.rules.hyphensToSpaces || current.rules.lowercaseEpisodeTitle { var cleanup = current.rules; cleanup.hyphensToSpaces = false; cleanup.lowercaseEpisodeTitle = false; current.rules = cleanup }
+            current.extractionMask = ""
+            return current
+        }
         var p = input
         if p.workspacePatterns == nil {
-            var compatibility = WorkspacePattern("Existing " + p.kind.label + " interpretation", compatibility: true)
-            compatibility.id = p.id
-            var suggested = PatternEngine.defaults(for: p)
-            if !p.extractionMask.isEmpty { suggested.insert(WorkspacePattern(p.extractionMask), at: 0) }
-            for index in suggested.indices { suggested[index].enabled = false; suggested[index].id = migrationID(p.id, index) }
-            p.workspacePatterns = [compatibility] + suggested
+            p.workspacePatterns = PatternEngine.defaults(for: p)
+            for index in p.workspacePatterns!.indices { p.workspacePatterns![index].id = migrationID(p.id, index) }
         }
         // New type names are available for review, but none changes an old destination layout.
         if p.classifications == nil { p.classifications = PatternEngine.defaultTypes(for: p.kind).map { type in var inherited = type; inherited.folderMask = nil; return inherited } }
@@ -122,6 +127,8 @@ public enum ProfileSetup {
             }
             p.fixedCategory = ""
         }
+        if p.rules.hyphensToSpaces || p.rules.lowercaseEpisodeTitle { var cleanup = p.rules; cleanup.hyphensToSpaces = false; cleanup.lowercaseEpisodeTitle = false; p.rules = cleanup }
+        p.extractionMask = ""
         p.rootAllowed = true; p.schemaVersion = 2
         return p
     }

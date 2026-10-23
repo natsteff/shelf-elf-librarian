@@ -33,7 +33,7 @@ public enum FieldCatalog {
     public static let keys: [String: WritableKeyPath<Fields, String>] = [
         "MediaCategory": \.mediaCategory, "Resolution": \.resolution, "Title": \.title, "Year": \.year, "Artist": \.artist, "Album": \.album,
         "Author": \.author, "BookTitle": \.bookTitle, "ChapterNumber": \.chapterNumber, "ChapterTitle": \.chapterTitle,
-        "Series": \.series, "Season": \.season, "Episode": \.episode, "EpisodeTitle": \.episodeTitle,
+        "SeriesName": \.series, "Series": \.series, "Season": \.season, "Episode": \.episode, "EpisodeTitle": \.episodeTitle,
         "Date": \.date, "Revision": \.revision, "Narrator": \.narrator, "Publisher": \.publisher,
         "Illustrator": \.illustrator, "IssueNumber": \.issueNumber, "Volume": \.volume, "SeriesNumber": \.seriesNumber,
         "TrackNumber": \.trackNumber, "RecordingType": \.recordingType, "Type": \.type, "System": \.system,
@@ -45,6 +45,12 @@ public enum FieldCatalog {
     public static func set(_ key: String, _ value: String, _ f: inout Fields) { if let path = keys[key] { f[keyPath: path] = key == "Resolution" ? normalizedResolution(value) : value } else { var custom = f.custom ?? [:]; custom[key] = value; f.custom = custom } }
 }
 public enum PatternEngine {
+    public static func customComponents(_ profile: Profile) -> [String] {
+        guard profile.kind == .documents else { return [] }
+        return Array(Set((profile.workspacePatterns ?? []).filter { !$0.compatibility }.flatMap { rule in
+            ((try? compiled(rule.pattern))?.1 ?? []).map(\.key).filter { FieldCatalog.keys[$0] == nil && $0 != "EpisodeID" }
+        })).sorted()
+    }
     public static func classificationKey(_ p: Profile) -> String { p.classificationComponent ?? (p.kind == .roms ? "System" : p.kind == .music ? "Genre" : "Type") }
     public static func lookup(_ value: String, profile: Profile) -> FilingType? {
         (profile.classifications ?? []).first { entry in
@@ -78,7 +84,7 @@ public enum PatternEngine {
             guard !literal.contains("{") && !literal.contains("}") else { throw fail("Unbalanced braces in pattern.") }
             expression += NSRegularExpression.escapedPattern(for: literal)
             let key = ns.substring(with: token.range(at: 1))
-            guard seen.insert(key).inserted else { throw fail("Use each captured component once: \(key)") }
+            guard seen.insert(key == "SeriesName" ? "Series" : key).inserted else { throw fail("Use each captured component once: \(key)") }
             if key == "EpisodeID" {
                 expression += #"([sS]\s*\d{1,3}\s*[eE]\s*\d{1,3})"#
             } else {
@@ -116,13 +122,21 @@ public enum PatternEngine {
             if let mask = entry.filenameMask { try validateMask(mask, folder: false) }
         }
         for rule in profile.workspacePatterns ?? [] {
-            if !rule.compatibility { _ = try compiled(rule.pattern) }
+            if !rule.compatibility {
+                let (_, captures) = try compiled(rule.pattern)
+                if profile.kind == .music || profile.kind == .video {
+                    for capture in captures where FieldCatalog.keys[capture.key] == nil && !["EpisodeID", "EpisodeIDAnywhere", "ParenthesizedYearAnywhere"].contains(capture.key) {
+                        throw fail("Custom component \(capture.key) is supported in Documents profiles. Music and Video use built-in components.")
+                    }
+                }
+            }
             if rule.assignedType == "@capture" {
                 guard rule.pattern.contains("{" + classificationKey(profile) + "}") else { throw fail("Read from filename requires {\(classificationKey(profile))} in the pattern.") }
             } else if !rule.assignedType.isEmpty && lookup(rule.assignedType, profile: profile) == nil {
                 throw fail("Pattern refers to an unknown classification: \(rule.assignedType)")
             }
         }
+        if profile.kind == .roms { try ROMRouting.validate(profile) }
         try validateMask(profile.folderMask, folder: true)
         try validateMask(profile.filenameMask, folder: false)
     }
@@ -141,11 +155,7 @@ public enum PatternEngine {
     public static func interpret(_ url: URL, profile p: Profile, record: ((String) -> Void)? = nil) -> (Fields, String, Bool) {
         let original = url.deletingPathExtension().lastPathComponent
         for (index, rule) in (p.workspacePatterns ?? []).enumerated() where rule.enabled {
-            if rule.compatibility {
-                var legacy = p; legacy.workspacePatterns = nil
-                let result = Names.legacyInterpret(url, legacy, record: record)
-                return (result.0, "Pattern \(index + 1): compatibility interpretation. " + result.1, result.2)
-            }
+            if rule.compatibility { continue }
             let input: String
             if rule.source == .parentFolders {
                 let levels = rule.pattern.components(separatedBy: "/").count
@@ -211,19 +221,21 @@ public enum PatternEngine {
             var warning = yearCandidates > 1 && p.kind == .video ? " Multiple possible years; review Year rather than choosing automatically." : ""
             if let known = lookup(captured, profile: p) { FieldCatalog.set(key, known.name, &f) }
             else if !captured.isEmpty { warning = " Unrecognized \(key): \(captured); choose or add a value before filing." }
+            if p.kind == .roms { return ROMRouting.resolve(url, fields: f, evidence: "Pattern \(index + 1): \(rule.pattern)." + warning, profile: p) }
             f.artist = RuleEngine.artistName(f.artist, profile: p)
             Names.enrichYearAndRecording(&f, profile: p)
             record?("Workspace pattern \(index + 1)")
             return (f, "Pattern \(index + 1): \(rule.pattern)." + warning, false)
         }
         var f = Fields(); f.title = Names.cleanField(original, p, record: record)
+        if p.kind == .roms { return ROMRouting.resolve(url, fields: f, evidence: "No filename pattern matched.", profile: p) }
         return (f, "No enabled workspace filename pattern matched. Original basename retained as Title; review components before filing.", false)
     }
     public static func defaults(for p: Profile) -> [WorkspacePattern] {
         switch p.kind {
         case .video: return [WorkspacePattern("{EpisodeID} - {Series} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeTitle} - {EpisodeID}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID} - {EpisodeTitle}", type: "TV Show"), WorkspacePattern("{Series} - {EpisodeID}", type: "TV Show"), WorkspacePattern("{EpisodeIDAnywhere}", type: "TV Show"), WorkspacePattern("Commercial - {Title} ({Year})", type: "Commercial"), WorkspacePattern("Commercial - {Title}", type: "Commercial"), WorkspacePattern("Documentary - {Title} ({Year})", type: "Documentary"), WorkspacePattern("Documentary - {Title}", type: "Documentary"), WorkspacePattern("{Title} [Commercial]", type: "Commercial"), WorkspacePattern("{Title} ({Year}) [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} ({Year}) {Resolution}", type: "Movie"), WorkspacePattern("{Title} {Year} [{Resolution}]", type: "Movie"), WorkspacePattern("{Title} {Year} {Resolution}", type: "Movie"), WorkspacePattern("({Year}) - {Title}", type: "Movie"), WorkspacePattern("({Year}) {Title}", type: "Movie"), WorkspacePattern("{Year} - {Title}", type: "Movie"), WorkspacePattern("{ParenthesizedYearAnywhere}", type: "Movie"), WorkspacePattern("{Title} [{Type}]", type: "@capture"), WorkspacePattern("{Title} ({Year})", type: "Movie"), WorkspacePattern("{Title} {Year}", type: "Movie"), WorkspacePattern("{Title}", type: "Movie")]
         case .music: return [WorkspacePattern("{TrackNumber} - {Artist} - {Title}"), WorkspacePattern("{Artist} - {Title}"), WorkspacePattern("{Title}")]
-        case .audiobook: return [WorkspacePattern("{Author} - {Series} - {SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {Series} - #{SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {BookTitle} - {ChapterNumber}"), WorkspacePattern("{ChapterNumber} - {ChapterTitle}"), WorkspacePattern("{Author} - {BookTitle}"), WorkspacePattern("{BookTitle}")]
+        case .audiobook: return [WorkspacePattern("{Author} - {Series} - {SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {Series} - #{SeriesNumber} - {BookTitle}"), WorkspacePattern("{Author} - {BookTitle} - {ChapterNumber}"), WorkspacePattern("{Author} - {SeriesName} - {BookTitle}"), WorkspacePattern("{ChapterNumber} - {ChapterTitle}"), WorkspacePattern("{Author} - {BookTitle}"), WorkspacePattern("{BookTitle}")]
         case .roms: return [WorkspacePattern("{Title} [{System}]", type: "@capture"), WorkspacePattern("{Title}")]
         case .software: return [WorkspacePattern("{Product} - {Version} [{Platform}]"), WorkspacePattern("{Product} - {Version}"), WorkspacePattern("{Product}")]
         case .photos: return [WorkspacePattern("{DateTaken} - {Event} - {Title}"), WorkspacePattern("{Title}")]
@@ -234,7 +246,7 @@ public enum PatternEngine {
         if kind == .video {
             return [FilingType("Movie", aliases: "Movies", folderMask: "Movies/{Title} ({Year?})", filenameMask: "{Title} ({Year?}) [{Resolution?}]"), FilingType("TV Show", aliases: "TV, TV Shows", folderMask: "TV Shows/{Series}/Season {Season:02}", filenameMask: "{Series} - {EpisodeID} - {EpisodeTitle}"), FilingType("Documentary", aliases: "Documentaries", folderMask: "Documentaries/{TitleYear}"), FilingType("Commercial", aliases: "Commercials", folderMask: "Commercials"), FilingType("Home Video", aliases: "Home Videos", folderMask: "Home Videos"), FilingType("Music Video", aliases: "Music Videos", folderMask: "Music Videos/{Title}"), FilingType("TV Show (Children)", folderMask: "TV Shows (Children)/{Series}/Season {Season:02}"), FilingType("Movie (Children)", folderMask: "Movies (Children)/{TitleYear}")]
         }
-        if kind == .roms { return [FilingType("NES", aliases: "Nintendo Entertainment System"), FilingType("SNES", aliases: "Super Nintendo, SFC"), FilingType("Game Boy", aliases: "GB"), FilingType("Game Boy Color", aliases: "GBC"), FilingType("Game Boy Advance", aliases: "GBA"), FilingType("Nintendo 64", aliases: "N64"), FilingType("Nintendo DS", aliases: "NDS"), FilingType("PlayStation", aliases: "PS1, PSX"), FilingType("PlayStation 2", aliases: "PS2"), FilingType("Genesis", aliases: "Mega Drive")] }
+        if kind == .roms { return [FilingType("NES", aliases: "Nintendo Entertainment System"), FilingType("SNES", aliases: "Super Nintendo, SFC"), FilingType("Game Boy", aliases: "GB"), FilingType("Game Boy Color", aliases: "GBC"), FilingType("Game Boy Advance", aliases: "GBA"), FilingType("Nintendo 64", aliases: "N64"), FilingType("Nintendo DS", aliases: "NDS"), FilingType("Nintendo 3DS"), FilingType("PlayStation", aliases: "PS1, PSX"), FilingType("PlayStation 2", aliases: "PS2"), FilingType("Genesis", aliases: "Mega Drive")] }
         return []
     }
 }

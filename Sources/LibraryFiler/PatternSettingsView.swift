@@ -58,11 +58,7 @@ struct PatternSettingsView: View {
                                 Button("↓") { move(rule.id, 1) }.accessibilityLabel("Move pattern later")
                                 Button("Remove") { rules.wrappedValue.removeAll { $0.id == rule.id } }
                             }
-                            if rule.compatibility {
-                                Text("Compatibility: existing " + profile.kind.label + " interpretation").font(.callout.bold())
-                                Text("Preserves the prior permissive parser, including the legacy extraction mask and episode precedence. Move your new patterns above this row, or disable/remove it to use patterns exclusively. It does not run Magic.").font(.caption).foregroundStyle(.secondary)
-                                Button("Convert to editable pattern") { rule.compatibility = false; rule.pattern = profile.extractionMask.isEmpty ? "{Title}" : profile.extractionMask }
-                            } else {
+                            Group {
                                 TextField("Input pattern", text: $rule.pattern).textFieldStyle(.roundedBorder)
                                 if let source = rule.source {
                                     Picker("Input source", selection: Binding(get: { rule.source ?? .filename }, set: { rule.source = $0 })) {
@@ -89,7 +85,8 @@ struct PatternSettingsView: View {
                         Button("Add Pattern") { rules.wrappedValue.append(WorkspacePattern("{Title}")) }
                         Button("Add Suggested Patterns Before Existing Rules") { addDefaults() }
                     }
-                    Text("Types & filing layouts").font(.headline)
+                    if profile.kind == .roms { ROMSettings(profile: $profile) }
+                    Text(profile.kind == .roms ? "Systems & library folders" : "Types & filing layouts").font(.headline)
                     Picker("Classification component", selection: Binding(get: { PatternEngine.classificationKey(profile) }, set: { profile.classificationComponent = $0 })) {
                         ForEach(["Type", "System", "Genre"], id: \.self) { Text($0).tag($0) }
                     }
@@ -107,7 +104,7 @@ struct PatternSettingsView: View {
                     Text("Tests at most 25 selected files. Shows matched rule, components and destination; no files are renamed or copied.").font(.caption).foregroundStyle(.secondary)
                     ForEach(Array(results.enumerated()), id: \.offset) { _, value in Text(value).font(.system(.caption, design: .monospaced)).textSelection(.enabled).padding(8).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary) }
                     if !validation.isEmpty { Text(validation).foregroundStyle(.red) }
-                    Text("Available captures: " + FieldCatalog.keys.keys.sorted().joined(separator: ", ") + ", EpisodeID. Output masks also support TitleYear, BookFolder, Bucket (music), Live and numeric :02 formatting. Use {Series?} for an optional folder level. BookFolder prefixes BookTitle with SeriesNumber when present.").font(.caption).foregroundStyle(.secondary)
+                    Text("Available captures: " + (FieldCatalog.keys.keys.sorted() + PatternEngine.customComponents(profile)).joined(separator: ", ") + ", EpisodeID. Documents profiles also allow custom component names such as {GameTitle} directly in input patterns, components and output masks. Output masks also support TitleYear, BookFolder, Bucket (music), Live and numeric :02 formatting. Use {Series?} for an optional folder level. BookFolder prefixes BookTitle with SeriesNumber when present.").font(.caption).foregroundStyle(.secondary)
                 }.padding(4)
             }
             HStack { Button("Cancel") { if let original { profile = original }; dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Done") { do { try PatternEngine.validate(profile); dismiss() } catch { validation = error.localizedDescription } }.keyboardShortcut(.defaultAction) }
@@ -128,7 +125,7 @@ private struct FilingTypeEditor: View {
                 HStack {
                     TextField("Folder mask (blank = library root)", text: Binding(get: { entry.folderMask ?? "" }, set: { entry.folderMask = $0 }))
                     Button("Choose Folder…") {
-                        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
+                        let panel = NSOpenPanel(); panel.title = "Select library folder for “" + entry.name + "”"; panel.message = panel.title; panel.canChooseDirectories = true; panel.canChooseFiles = false
                         if !root.isEmpty { panel.directoryURL = URL(fileURLWithPath: root) }
                         WindowPresentation.choose(panel) { response in
                         guard response == .OK, let url = panel.url else { return }

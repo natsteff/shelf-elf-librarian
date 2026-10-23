@@ -363,7 +363,7 @@ struct WorkspaceSession: Codable {
     func checkLibraryDestination(_ profile: Profile, onReconnect: @escaping (Profile) -> Void = { _ in }) -> Bool {
         if profile.root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let alert = NSAlert(); alert.messageText = "Library destination not configured"
-            alert.informativeText = "Choose a destination folder in Profile Settings → Profile & destination → Choose Destination Root before copying or moving files."
+            alert.informativeText = "Choose a destination folder in Profile Settings → Profile & destination → Choose Library Location before copying or moving files."
             alert.addButton(withTitle: "Open Profile Settings"); alert.addButton(withTitle: "Cancel")
             WindowPresentation.confirm(alert) { [weak self] response in if response == .alertFirstButtonReturn { self?.showSettings = true } }
             return false
@@ -394,7 +394,7 @@ struct WorkspaceSession: Codable {
                 return false
             }
             return true
-        } catch { self.error = "Library destination unavailable: \(profile.root). Reconnect it in Profile Settings → Choose Destination Root. \(error.localizedDescription)"; return false }
+        } catch { self.error = "Library destination unavailable: \(profile.root). Reconnect it in Profile Settings → Choose Library Location. \(error.localizedDescription)"; return false }
     }
     func skipReviewAndFile() {
         guard !busy, let preview = plan, preview.mode != .clean else { return }
@@ -865,7 +865,7 @@ struct FieldEditor: View {
     private var includesMovies: Bool { m.visibleSelected.contains { $0.fields.season.isEmpty && $0.fields.episode.isEmpty && !$0.fields.type.localizedCaseInsensitiveContains("TV") } }
     private var episodeFields: some View {
         Group {
-            field("Series", \.series)
+            field(m.active.kind == .audiobook ? "Series name (optional)" : "Series", \.series)
             HStack(alignment: .top, spacing: 10) { field("Season", \.season); field("Episode", \.episode) }
             field("Episode title", \.episodeTitle)
         }
@@ -908,7 +908,7 @@ struct FieldEditor: View {
             } else if m.active.kind == .documents || m.active.kind == .roms || m.active.kind == .photos || m.active.kind == .software || m.active.kind == .other {
                 field(m.active.kind == .other ? "Filename (without extension)" : "Title", \.title)
             }
-            ForEach(Array(Set(m.visibleSelected.flatMap { $0.fields.custom?.keys.map { $0 } ?? [] })).sorted(), id: \.self) { key in
+            ForEach(Array(Set(PatternEngine.customComponents(m.active) + m.visibleSelected.flatMap { $0.fields.custom?.keys.map { $0 } ?? [] })).sorted(), id: \.self) { key in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(key).font(.caption.bold()).foregroundStyle(.secondary)
                     TextField(key, text: Binding(get: {
@@ -935,7 +935,7 @@ struct FieldEditor: View {
             }
             if m.active.kind == .audiobook {
                 field("Author — shared group", \.author); field("Title — shared group", \.bookTitle)
-                field("Series (optional)", \.series); field("Series number (optional)", \.seriesNumber)
+                field("Series name (optional)", \.series); field("Series number (optional)", \.seriesNumber)
                 field("Publisher (optional)", \.publisher); field("Published year (optional)", \.year)
                 if m.active.effectiveBookSubtype == .audiobook || m.active.effectiveBookSubtype == .general {
                     field("Narrator (optional)", \.narrator)

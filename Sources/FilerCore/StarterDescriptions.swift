@@ -23,12 +23,12 @@ public enum StarterDescriptions {
 
         The related github entry states that FORGE GameSheets is a self-hosted home for printable game resources, custom GameSheets, and temporary live scoring. Organize and search PDF rulebooks, score sheets, player aids, and print-and-play files; design new structured sheets; and share compatible sheets as interactive LiveSheets across devices. Source PDFs remain yours and are not modified by the application.
 
-        Suggested Shelf Elf organization: interpret {Game} - {Title}, file into {Game}, and retain {Game} - {Title} as the filename. For example: Yahtzee/Yahtzee - Score Sheet.pdf. Use consistent game names across related resources. Shelf Elf prepares the library’s names and folders; FORGE provides the browsing, design and LiveSheet features described above.
+        Suggested Shelf Elf organization: interpret {GameTitle} - {ResourceName}, file into {GameTitle}, and retain {GameTitle} - {ResourceName} as the filename. For example: Yahtzee/Yahtzee - Score Sheet.pdf. Use consistent game names across related resources. Shelf Elf prepares the library’s names and folders; FORGE provides the browsing, design and LiveSheet features described above.
         """),
         "ROMs": (.roms, """
-        Organize video game ROMs and disc images by their target system, with optional Region, Edition and Revision components. System aliases can standardize different labels for the same platform.
+        Organize video game ROMs and disc images by their target system, with optional Region, Edition and Revision components. Extension mappings infer clear systems such as .nes → NES and .gba → Game Boy Advance. Shared extensions need System from filename/parent-folder patterns or manual selection. System aliases standardize labels for the same platform.
 
-        Suggested organization: System/Game Title. Preserve region, language and revision identifiers when they distinguish releases. Use separate profiles for collections with different naming conventions, and review ambiguous system assignments before filing.
+        Suggested organization: System/original ROM filename. Original filenames are preserved. Folders containing disc descriptors or playlists require complete-set handling and are blocked from individual filing. Preserve region, language and revision identifiers when they distinguish releases. Use separate profiles for collections with different naming conventions, and review ambiguous system assignments before filing.
         """),
         "Photos": (.photos, """
         Organize image files using descriptive titles, dates and events captured from filenames or entered manually.

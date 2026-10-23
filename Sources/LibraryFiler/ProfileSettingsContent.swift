@@ -89,12 +89,12 @@ struct ProfileSettingsContent: View {
         case .music: return "Artist, Title, Album, Year, TrackNumber, Genre, RecordingType, Live, Bucket, AlbumOrIndividual"
         case .audiobook:
             switch profile.effectiveBookSubtype {
-            case .audiobook: return "Author, Series, SeriesNumber, BookTitle, BookFolder, ChapterNumber, ChapterTitle, ChapterOrBook, Narrator, Publisher, Year"
-            case .ebook: return "Author, Series, SeriesNumber, BookTitle, BookFolder, Publisher, Year"
-            case .comic: return "Author, Series, SeriesNumber, BookTitle, BookFolder, Illustrator, Publisher, IssueNumber, Volume, Year"
-            case .general: return "Author, Series, SeriesNumber, BookTitle, BookFolder, ChapterNumber, ChapterTitle, Narrator, Illustrator, Publisher, IssueNumber, Volume, Year"
+            case .audiobook: return "Author, SeriesName (Series), SeriesNumber, BookTitle, BookFolder, ChapterNumber, ChapterTitle, ChapterOrBook, Narrator, Publisher, Year"
+            case .ebook: return "Author, SeriesName (Series), SeriesNumber, BookTitle, BookFolder, Publisher, Year"
+            case .comic: return "Author, SeriesName (Series), SeriesNumber, BookTitle, BookFolder, Illustrator, Publisher, IssueNumber, Volume, Year"
+            case .general: return "Author, SeriesName (Series), SeriesNumber, BookTitle, BookFolder, ChapterNumber, ChapterTitle, Narrator, Illustrator, Publisher, IssueNumber, Volume, Year"
             }
-        case .documents: return "Title, Date, Revision, Game, Type"
+        case .documents: return (["Title", "Date", "Revision", "Game", "Type"] + PatternEngine.customComponents(profile)).joined(separator: ", ")
         case .roms: return "Title, System, Region, Edition, Revision"
         case .photos: return "Title, DateTaken, Event"
         case .software: return "Product, Version, Platform, Architecture, Title"
@@ -121,9 +121,9 @@ struct ProfileSettingsContent: View {
             SettingsHint(text: "Changing content type or subtype preserves your settings. Load defaults replaces rules, extensions and masks; name, notes and destination are kept.")
             SettingsInput(title: "Extensions (comma separated)", text: $profile.extensions, example: suggested.extensions)
             SettingsHint(text: "Filters files without converting them. Matching ignores case; original extensions are preserved.")
-            LabeledContent("Destination root") { Text(profile.root.isEmpty ? "Not configured" : profile.root).textSelection(.enabled) }
+            LabeledContent("Library location") { Text(profile.root.isEmpty ? "Not configured" : profile.root).textSelection(.enabled) }
             HStack {
-                Button("Choose Destination Root…") {
+                Button("Choose Library Location…") {
                     let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
                     WindowPresentation.choose(panel) { response in
                         guard response == .OK, let url = panel.url else { return }
@@ -137,7 +137,7 @@ struct ProfileSettingsContent: View {
                 Button("Show Library in Finder") {
                     let url = URL(fileURLWithPath: profile.root)
                     let scoped = url.startAccessingSecurityScopedResource(); defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                    if !showFolderInFinder(url) { validation = "Library folder unavailable. Choose Destination Root to reconnect." }
+                    if !showFolderInFinder(url) { validation = "Library folder unavailable. Choose Library Location to reconnect." }
                 }.disabled(profile.root.isEmpty)
             }
             SettingsHint(text: "Folder masks create subfolders beneath this root. The Copy/Move preview shows the complete destination before you apply it.")
@@ -145,10 +145,6 @@ struct ProfileSettingsContent: View {
         Section("2. Read filenames") {
             Button("Workspace Filename Patterns & Filing Types…", action: patterns)
             SettingsHint(text: "Input patterns run in order and extract components from original filenames. Filing types choose output layouts in section 4. Test patterns against workspace examples before saving.")
-            if profile.workspacePatterns?.contains(where: { $0.compatibility }) == true {
-                SettingsInput(title: "Legacy extraction mask", text: $profile.extractionMask, example: suggested.workspacePatterns?.first?.pattern ?? "{Title}")
-                SettingsHint(text: "Used only by an enabled compatibility rule. Edit or disable that rule in Workspace Filename Patterns.")
-            }
             Text("Available components: " + componentReference).font(.caption)
             if profile.kind == .photos || profile.kind == .music || profile.kind == .audiobook {
                 SettingsHint(text: "Components come from filenames or explicitly configured parent-folder patterns. MP3 tags are available as read-only reference information; they never fill components automatically. Photo EXIF data is not read.")
@@ -172,10 +168,8 @@ struct ProfileSettingsContent: View {
             SettingsHint(text: periodChoice.wrappedValue == "dashes" ? "Name.v1.2" + exampleExtension + " → Name - v1 - 2" + exampleExtension + ". Only basename periods change, including decimals. The final extension separator and extension (" + exampleExtension + ") remain unchanged." : sample.replacingOccurrences(of: " ", with: ".") + exampleExtension + " → " + sample + exampleExtension + ". Only periods within the basename are processed. The final extension separator and extension (" + exampleExtension + ") remain unchanged in every mode. Separator mode preserves decimals and dotted initials.")
             Toggle("Title case", isOn: $profile.titleCase)
             Toggle("Smart title case", isOn: Binding(get: { profile.rules.smartTitleCase }, set: { var r = profile.rules; r.smartTitleCase = $0; profile.rules = r })).disabled(!profile.titleCase)
-            SettingsHint(text: "Smart title case keeps short connecting words lowercase in names such as ‘" + sample + " of the Year’. Requires Title case and uses the lowercase word list in General Settings. Preferred-case exceptions apply last.")
+            SettingsHint(text: "Smart title case keeps short connecting words lowercase in names such as ‘" + sample + " of the Year’. Enable Title case and Smart title case here to use the editable Universal lowercase title words list in General Settings. Add or remove words there to control which connecting words stay lowercase. Preferred-case exceptions apply last.")
             Toggle("Normalize repeated spaces and trim whitespace", isOn: Binding(get: { profile.normalizeSpaces ?? true }, set: { profile.normalizeSpaces = $0 }))
-            Toggle("Hyphens to spaces (filename components)", isOn: Binding(get: { profile.rules.hyphensToSpaces }, set: { var r = profile.rules; r.hyphensToSpaces = $0; profile.rules = r }))
-            SettingsHint(text: sample.replacingOccurrences(of: " ", with: "-") + " → " + sample + ". Output masks may add their own separators. Protect meaningful spellings such as AC-DC in General Settings.")
             DisclosureGroup("Advanced cleanup & replacements") {
                 SettingsInput(title: "Removable labels", text: $profile.removeTokens, example: profile.kind == .music ? "[Official Audio]" : "[Unwanted Label]")
                 SettingsHint(text: "Deletes matching text at word boundaries, including brackets if entered. Leave blank to preserve technical information such as resolution and source.")
@@ -211,7 +205,7 @@ struct ProfileSettingsContent: View {
                 SettingsHint(text: "The Beatles → Beatles, The. Changes the Artist component used in proposed names, folders and buckets. Embedded tags remain unchanged. Independent of Ignore leading The for bucket only; both options default off.")
             }
             if profile.kind == .music {
-                DisclosureGroup("MP3 Tags to Keep") {
+                DisclosureGroup("MP3 Tags to Keep on Purge") {
                     SettingsHint(text: "Tools → Purge Other MP3 Tags and Magic’s optional purge use this keep list. Every option is kept by default, including artwork and other/custom tags. Uncheck only what you want removed. Other/custom includes user text, URLs, encoder information and sort fields. Saving this profile does not modify files.")
                     ForEach(MP3KeepTag.allCases) { tag in
                         Toggle(tag.label, isOn: Binding(get: { (profile.mp3TagsToKeep ?? Set(MP3KeepTag.allCases)).contains(tag) }, set: { keep in
@@ -222,7 +216,7 @@ struct ProfileSettingsContent: View {
                 }
             }
             if profile.kind != .video && profile.supportsEpisodes { DisclosureGroup("Optional episode formatting") { EpisodeFormattingSettings(rules: Binding(get: { profile.rules }, set: { profile.rules = $0 })) } }
-            DisclosureGroup("Components & mask reference") {
+            DisclosureGroup("Components & mask reference (use {Component}; fixed text and separators are allowed—see the guide)") {
                 Text(componentReference).font(.caption)
                 Button("Interpretation & Output Masks Guide…", action: guide)
                 Button("Edit input patterns and filing type overrides…", action: patterns)
@@ -234,7 +228,7 @@ struct ProfileSettingsContent: View {
             if profile.kind == .music {
                 Toggle("Update MP3 tags from components when running Magic", isOn: Binding(get: { profile.magicUpdateMP3Tags ?? false }, set: { profile.magicUpdateMP3Tags = $0 })).disabled(!profile.rules.useMagic)
                 Toggle("Purge MP3 tags when running Magic", isOn: Binding(get: { profile.magicPurgeMP3Tags ?? false }, set: { profile.magicPurgeMP3Tags = $0 })).disabled(!profile.rules.useMagic)
-                SettingsHint(text: "Both options default off. Magic prepares components, updates nonempty component tags if enabled, then purges according to MP3 Tags to Keep before publishing the library file. For Copy, only the library copy is changed. Move retains the original until all steps succeed. Every run requires confirmation. Tag changes have no Undo or retained backup.")
+                SettingsHint(text: "Both options default off. Magic prepares components, updates nonempty component tags if enabled, then purges according to MP3 Tags to Keep on Purge before publishing the library file. For Copy, only the library copy is changed. Move retains the original until all steps succeed. Every run requires confirmation. Tag changes have no Undo or retained backup.")
             }
             Toggle("Remember confirmed corrections by default", isOn: Binding(get: { profile.rememberCorrectionsByDefault ?? true }, set: { profile.rememberCorrectionsByDefault = $0 }))
             SettingsHint(text: "Starts Remember checked after refresh. Only successful, approved operations supply examples. You can turn it off for selected files or forget examples below.")
@@ -245,6 +239,7 @@ struct ProfileSettingsContent: View {
         Group {
             SettingsInput(title: "Folder mask", text: $profile.folderMask, example: suggested.folderMask)
             SettingsInput(title: "Filename mask (without extension)", text: $profile.filenameMask, example: suggested.filenameMask)
+            if profile.kind == .roms { SettingsHint(text: "ROM filenames are always preserved unless you explicitly edit a filename. The filename mask is not used for automatic ROM renaming. Configure extension → System mappings and library folders in Workspace Filename Patterns & Filing Types.") }
             SettingsHint(text: "Type, System or Genre mappings may override these masks. Review those mappings in Workspace Filename Patterns & Filing Types.")
         }
     }
@@ -256,8 +251,6 @@ struct EpisodeFormattingSettings: View {
         Toggle("Format season/episode separators", isOn: $rules.formatEpisodes)
         SettingsHint(text: "Show S1E2 Pilot → Show - S01E02 - Pilot. Explicit TV output masks control the final separators; {EpisodeID} uses the capitalization below.")
         Picker("Season/episode capitalization", selection: Binding(get: { rules.episodeCase }, set: { rules.episodeCapitalization = $0 })) { ForEach(EpisodeCapitalization.allCases) { Text($0.label).tag($0) } }
-        Toggle("Lowercase entire episode filename", isOn: $rules.lowercaseEpisodeTitle)
-        SettingsHint(text: "Changes surrounding series/title text. Episode capitalization and preferred-case exceptions retain their own rules.")
     }
 }
 

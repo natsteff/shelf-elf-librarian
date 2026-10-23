@@ -37,6 +37,7 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var unmatchedMediaUseLibraryRoot: Bool?
     public var magicUpdateMP3Tags: Bool?
     public var magicPurgeMP3Tags: Bool?
+    public var romExtensionMappings: [ROMExtensionMapping]?
     public var mp3TagsToKeep: Set<MP3KeepTag>?
     public var bookSubtype: BookSubtype?
     public var effectiveBookSubtype: BookSubtype { bookSubtype ?? .audiobook }
@@ -69,7 +70,7 @@ public struct Profile: Codable, Identifiable, Equatable {
         case .music: name = "Music — Demo"; extensions = "mp3, flac, m4a, aac, wav, aiff"; folderMask = "{Bucket}/{Artist}/{AlbumOrIndividual}"; filenameMask = "{Artist} - {Title}"
         case .audiobook: name = "Audiobooks — Demo"; extensions = "m4b, mp3"; folderMask = "{Author}/{BookTitle}"; filenameMask = "{ChapterOrBook}"
         case .documents: name = "Documents — Demo"; extensions = "pdf"; folderMask = ""; filenameMask = "{Title}"; replaceDots = false
-        case .roms: name = "Video Game ROMs"; extensions = "nes, sfc, smc, gb, gbc, gba, n64, z64, nds, 3ds, chd, iso, cue, bin, zip, 7z"; folderMask = "{System}"; filenameMask = "{Title}"; titleCase = false; replaceDots = false
+        case .roms: name = "Video Game ROMs"; extensions = "nes, sfc, smc, gb, gbc, gba, n64, z64, v64, nds, 3ds, chd, iso, cue, bin, zip, 7z, m3u, gdi"; folderMask = "{System}"; filenameMask = "{Title}"; titleCase = false; replaceDots = false
         case .photos: name = "Photos"; extensions = "jpg, jpeg, png, heic, tiff, raw, dng"; folderMask = ""; filenameMask = "{Title}"; titleCase = false; replaceDots = false
         case .software: name = "Software & Installers"; extensions = "dmg, pkg, exe, msi, iso, zip, 7z, deb, rpm, appimage"; folderMask = "{Product}"; filenameMask = "{Title}"; titleCase = false; replaceDots = false
         case .other:
@@ -77,6 +78,7 @@ public struct Profile: Codable, Identifiable, Equatable {
             replaceUnderscores = false; replaceDots = false; titleCase = false; normalizeSpaces = false
             exceptions = ""; bucket = false
         }
+        if kind == .roms { replaceUnderscores = false; normalizeSpaces = false; exceptions = ""; bucket = false }
         if kind == .audiobook, let bookSubtype, bookSubtype != .audiobook {
             name = "Books & Comics"; folderMask = "{Author}"; filenameMask = "{BookTitle}"
             switch bookSubtype {
