@@ -30,6 +30,10 @@ struct GroupedPlanRows: View {
                                 }
                                 Text("Source: " + row.source)
                                 if !row.destination.isEmpty { Text("Destination: " + row.destination).fontWeight(.medium) }
+                                if let recipe = row.magicMP3 {
+                                    if recipe.changes.isEmpty { Text("MP3 steps checked: no tag changes needed.").font(.caption).foregroundStyle(.secondary) }
+                                    else { Text(recipe.changes.joined(separator: "\n")).font(.caption).foregroundStyle(.secondary) }
+                                }
                                 if included != nil && !row.newFolders.isEmpty { Text("New folders (created only on Apply):\n" + row.newFolders.joined(separator: "\n")).font(.caption).foregroundStyle(.blue) }
                                 if !row.actionable || included != nil { Text(row.explanation).font(.caption).foregroundStyle(.secondary) }
                             }.textSelection(.enabled).padding(10).frame(maxWidth: .infinity, alignment: .leading)

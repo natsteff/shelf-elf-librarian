@@ -84,6 +84,7 @@ struct WorkspaceSession: Codable {
     private var pendingSkipFiling = false
     @Published var quickMode: Mode = .copy
     @Published var quickKeepNames = false
+    @Published var quickIsMagic = false
     private var quickItems: [Item] = []
     private var quickProfile: Profile?
     private var previewItems: [Item] = []
@@ -341,6 +342,7 @@ struct WorkspaceSession: Codable {
     func refresh() {
         guard !profiles.isEmpty, let root = workspace else { return }; let p = active, recurse = recursive
         cancellation = Cancellation(); let token = cancellation
+        tagEditsBefore.removeAll(); filenameFocusID = nil
         busy = true; status = "Discovering eligible files…"; progress = "Scanning"; invalidate()
         Task { do { let r = try await Task.detached { try await scanMedia(root, profile: p, recursive: recurse, cancel: token) }.value; items = r.items.map { var item = $0; item.rememberCorrection = p.rememberCorrectionsByDefault ?? true; return item }; excluded = r.excluded; selected = []; status = "\(items.count.formatted()) eligible • \(excluded.count.formatted()) excluded" } catch { self.error = error.localizedDescription }; busy = false; progress = "" }
     }
@@ -396,31 +398,37 @@ struct WorkspaceSession: Codable {
     }
     func skipReviewAndFile() {
         guard !busy, let preview = plan, preview.mode != .clean else { return }
-        quickItems = previewItems; quickProfile = preview.profile; quickMode = preview.mode; quickKeepNames = true
+        quickItems = previewItems; quickProfile = preview.profile; quickMode = preview.mode; quickKeepNames = true; quickIsMagic = false
         pendingSkipFiling = true; showReview = false
     }
     func reviewDismissed() {
         guard pendingSkipFiling else { return }
         pendingSkipFiling = false; rebuildQuickFiling(quickMode)
     }
-    func beginQuickFiling(_ chosen: [Item], profile: Profile, mode: Mode, keepNames: Bool) {
-        guard !chosen.isEmpty, checkLibraryDestination(profile, onReconnect: { [weak self] rebound in self?.beginQuickFiling(chosen, profile: rebound, mode: mode, keepNames: keepNames) }) else { return }
-        quickItems = chosen; quickProfile = profile; quickMode = mode; quickKeepNames = keepNames
+    func beginQuickFiling(_ chosen: [Item], profile: Profile, mode: Mode, keepNames: Bool, magic: Bool = false) {
+        guard !chosen.isEmpty, checkLibraryDestination(profile, onReconnect: { [weak self] rebound in self?.beginQuickFiling(chosen, profile: rebound, mode: mode, keepNames: keepNames, magic: magic) }) else { return }
+        quickItems = chosen; quickProfile = profile; quickMode = mode; quickKeepNames = keepNames; quickIsMagic = magic
         rebuildQuickFiling(mode)
     }
     func rebuildQuickFiling(_ mode: Mode) {
         guard !busy, let profile = quickProfile else { return }
-        let chosen = quickItems, keepNames = quickKeepNames
+        let chosen = quickItems, keepNames = quickKeepNames, magic = quickIsMagic
         quickPlan = nil; quickFailure = "Confirm the replacement library folder to rebuild this preview."
         guard checkLibraryDestination(profile, onReconnect: { [weak self] rebound in self?.quickProfile = rebound; self?.rebuildQuickFiling(mode) }) else { return }
         quickPlan = nil; quickFailure = nil; busy = true; progress = "Checking library destinations…"
+        cancellation = Cancellation(); let token = cancellation
         Task {
             do {
-                let result = try await Task.detached { try makeConfirmedFilingPlan(items: chosen, profile: profile, mode: mode, keepCurrentNames: keepNames) }.value
+                let result = try await Task.detached { try magic ? makeMagicFilingPlan(items: chosen, profile: profile, mode: mode, cancel: token) : makeConfirmedFilingPlan(items: chosen, profile: profile, mode: mode, keepCurrentNames: keepNames) }.value
+                guard !token.cancelled else { busy = false; progress = ""; status = "Preview cancelled; no files changed."; return }
                 quickPlan = result; showQuickFiling = true
-            } catch { quickFailure = error.localizedDescription; showQuickFiling = true }
+            } catch { if token.cancelled { status = "Preview cancelled; no files changed." } else { quickFailure = error.localizedDescription; showQuickFiling = true } }
             busy = false; progress = ""
         }
+    }
+    func cancelQuickFiling() {
+        if busy { cancellation.cancel() }
+        showQuickFiling = false; quickPlan = nil; quickFailure = nil
     }
     func applyQuickFiling() {
         guard !busy, var confirmed = quickPlan else { return }
@@ -435,7 +443,7 @@ struct WorkspaceSession: Codable {
             guard let self else { return }
             let sources = Set(p.rows.map(\.source))
             self.quickItems = self.items.filter { sources.contains($0.id) }
-            self.quickProfile = rebound; self.quickMode = p.mode; self.quickKeepNames = p.fileOnly
+            self.quickProfile = rebound; self.quickMode = p.mode; self.quickKeepNames = p.fileOnly; self.quickIsMagic = p.magicRun == true
             if reviewWasVisible { self.pendingSkipFiling = true; self.showReview = false }
             else { self.rebuildQuickFiling(p.mode) }
         }) { return }
@@ -456,6 +464,7 @@ struct WorkspaceSession: Codable {
             do { completed = OperationPresentation.completedSources(plan: p, events: try Journal(url: db).events()) }
             catch { completed = []; self.error = "Could not read operation completion details. Review History. " + error.localizedDescription }
             selected.subtract(completed)
+            for id in completed { tagEditsBefore.removeValue(forKey: id) }
             if p.mode == .move {
                 let existing = items, remainingSelection = selected
                 items.removeAll { completed.contains($0.id) }
@@ -534,7 +543,7 @@ struct WorkspaceSession: Codable {
                 for result in results { if let index = items.firstIndex(where: { $0.id == result.id }) { items[index] = result } }
                 status = "Magic analysis complete. Confirm Copy or Move to apply proposed names in the library."
                 busy = false; progress = ""
-                beginQuickFiling(results, profile: profile, mode: operation, keepNames: false)
+                beginQuickFiling(results, profile: profile, mode: operation, keepNames: false, magic: true)
                 return
             } catch { status = error.localizedDescription }
             busy = false; progress = ""
@@ -946,7 +955,7 @@ struct FieldEditor: View {
             DisclosureGroup("How edits and filing work") {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("Row rename buttons and Return in the name editor rename files immediately in the workspace. Component confirmation here is separate and is used for filing. Successful direct renames are deselected.")
-                    Text("Filename components come from filenames; Magic may also use folder names and remembered corrections. MP3 tags are read-only reference information. Video metadata can fill missing components used by masks. Tags change only through explicit MP3 Tools actions.")
+                    Text("Filename components come from filenames; Magic may also use folder names and remembered corrections. MP3 tags are read-only reference information. Video metadata can fill missing components used by masks. Tags change only through explicit MP3 Tools actions or enabled, confirmed Magic steps.")
                     Text("Only successful, user-approved operations supply learning examples. Remembering allows Magic to reuse them in this profile; it never changes rules automatically.")
                     Text("Edits apply to selected visible files. Mixed filename components stay unchanged unless you type a replacement. Shared author/book filename components define an audiobook group.")
                 }.font(.system(size: 12)).foregroundStyle(.secondary)
@@ -1046,7 +1055,7 @@ struct HistoryView: View {
                 }
             }
             List(m.events) { e in VStack(alignment: .leading, spacing: 5) {
-                HStack { Text(e.state).bold(); Text(e.date.formatted()).foregroundStyle(.secondary); Spacer(); if ["Copied", "Moved"].contains(e.state) { Button("Guarded Undo…") { confirm = e }.disabled(m.busy) }; if m.canRecover(e) { Button("Recover Original File") { m.recoverStagedFile(e) }.disabled(m.busy) } }
+                HStack { Text(e.state).bold(); Text(e.date.formatted()).foregroundStyle(.secondary); Spacer(); if ["Copied", "Moved"].contains(e.state) && !e.hasMagicTagChanges { Button("Guarded Undo…") { confirm = e }.disabled(m.busy) }; if m.canRecover(e) { Button("Recover Original File") { m.recoverStagedFile(e) }.disabled(m.busy) } }
                 Text(e.row.source + "\n→ " + e.row.destination).font(.caption).textSelection(.enabled)
                 if !e.detail.isEmpty { Text(e.detail).font(.caption) }
                 if let t = e.temporary { Text("Recovery path: " + t).font(.caption).textSelection(.enabled) }

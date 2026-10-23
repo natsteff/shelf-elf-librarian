@@ -54,7 +54,7 @@ private struct EmbeddedMetadataDetails: View {
                 Text("Review closes this popup and focuses the filename. Enter renames; Esc restores components and the proposal from before your tag choices.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Refresh after external tag edits. Writing and purging tags are separate Tools actions.")
+            Text("Refresh after external tag edits. Tags change only through reviewed Tools actions or enabled Magic steps.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(16).frame(width: 580)
     }

@@ -212,7 +212,7 @@ struct ProfileSettingsContent: View {
             }
             if profile.kind == .music {
                 DisclosureGroup("MP3 Tags to Keep") {
-                    SettingsHint(text: "Tools → Purge Other MP3 Tags uses this keep list. Every option is kept by default, including artwork and other/custom tags. Uncheck only what you want removed. Other/custom includes user text, URLs, encoder information and sort fields. Saving this profile does not modify files.")
+                    SettingsHint(text: "Tools → Purge Other MP3 Tags and Magic’s optional purge use this keep list. Every option is kept by default, including artwork and other/custom tags. Uncheck only what you want removed. Other/custom includes user text, URLs, encoder information and sort fields. Saving this profile does not modify files.")
                     ForEach(MP3KeepTag.allCases) { tag in
                         Toggle(tag.label, isOn: Binding(get: { (profile.mp3TagsToKeep ?? Set(MP3KeepTag.allCases)).contains(tag) }, set: { keep in
                             var tags = profile.mp3TagsToKeep ?? Set(MP3KeepTag.allCases)
@@ -230,7 +230,12 @@ struct ProfileSettingsContent: View {
         }
         Section("5. Magic & learning") {
             Toggle("Enable Magic for this profile", isOn: Binding(get: { profile.rules.useMagic }, set: { var r = profile.rules; r.useMagic = $0; profile.rules = r }))
-            SettingsHint(text: "Run Magic analyzes selected visible files, then asks you to confirm Copy or Move to Library. Output masks determine proposed names and destinations. The default operation follows the workspace dropdown. Nothing is copied or moved until confirmation. No online lookup. MP3 tags are read-only reference information; video metadata can fill missing components used by output masks. No tags are changed.")
+            SettingsHint(text: "Run Magic analyzes selected visible files, then asks you to confirm Copy or Move to Library. Output masks determine proposed names and destinations. The default operation follows the workspace dropdown. Nothing is copied or moved until confirmation. No online lookup. MP3 tags are reference information; video metadata can fill missing components used by output masks. MP3 tag changes run only when their optional Magic steps are enabled and confirmed.")
+            if profile.kind == .music {
+                Toggle("Update MP3 tags from components when running Magic", isOn: Binding(get: { profile.magicUpdateMP3Tags ?? false }, set: { profile.magicUpdateMP3Tags = $0 })).disabled(!profile.rules.useMagic)
+                Toggle("Purge MP3 tags when running Magic", isOn: Binding(get: { profile.magicPurgeMP3Tags ?? false }, set: { profile.magicPurgeMP3Tags = $0 })).disabled(!profile.rules.useMagic)
+                SettingsHint(text: "Both options default off. Magic prepares components, updates nonempty component tags if enabled, then purges according to MP3 Tags to Keep before publishing the library file. For Copy, only the library copy is changed. Move retains the original until all steps succeed. Every run requires confirmation. Tag changes have no Undo or retained backup.")
+            }
             Toggle("Remember confirmed corrections by default", isOn: Binding(get: { profile.rememberCorrectionsByDefault ?? true }, set: { profile.rememberCorrectionsByDefault = $0 }))
             SettingsHint(text: "Starts Remember checked after refresh. Only successful, approved operations supply examples. You can turn it off for selected files or forget examples below.")
             Button("Recommendations & Learning…", action: recommendations)

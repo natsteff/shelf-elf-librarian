@@ -75,7 +75,7 @@ public struct ProfileRecommendation: Identifiable {
 public enum Learning {
     public static func settingsSignature(_ profile: Profile) -> String {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        var interpretationProfile = profile; interpretationProfile.notes = nil; interpretationProfile.mp3TagsToKeep = nil
+        var interpretationProfile = profile; interpretationProfile.notes = nil; interpretationProfile.mp3TagsToKeep = nil; interpretationProfile.magicUpdateMP3Tags = nil; interpretationProfile.magicPurgeMP3Tags = nil
         guard let data = try? encoder.encode(interpretationProfile) else { return "" }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }

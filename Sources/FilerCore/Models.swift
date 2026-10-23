@@ -35,6 +35,8 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var mediaCategories: [MediaCategory]?
     public var defaultMediaCategoryID: UUID?
     public var unmatchedMediaUseLibraryRoot: Bool?
+    public var magicUpdateMP3Tags: Bool?
+    public var magicPurgeMP3Tags: Bool?
     public var mp3TagsToKeep: Set<MP3KeepTag>?
     public var bookSubtype: BookSubtype?
     public var effectiveBookSubtype: BookSubtype { bookSubtype ?? .audiobook }

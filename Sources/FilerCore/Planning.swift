@@ -269,12 +269,14 @@ public struct PlanRow: Codable, Identifiable {
     public var group: String
     public var caseOnly: Bool?
     public var correction: ConfirmedCorrection?
+    public var magicMP3: MagicMP3Recipe?
     public var actionable: Bool { ["Will copy", "Will move", "Will rename"].contains(status) }
 }
 public struct DirectoryIdentity: Codable, Equatable { public var device: Int32; public var inode: UInt64; public init(device: Int32, inode: UInt64) { self.device = device; self.inode = inode } }
 public struct Plan: Codable, Identifiable {
     public var id = UUID()
     public var created = Date()
+    public var magicRun: Bool?
     public var profile: Profile
     public var mode: Mode
     public var fileOnly: Bool

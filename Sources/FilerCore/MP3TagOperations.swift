@@ -37,9 +37,12 @@ public enum MP3TagWriter {
         PlanRow(source: file.id, destination: file.id, fingerprint: file.fingerprint, hash: file.hash, status: "MP3 tag operation", explanation: "No Undo or retained backup", group: "")
     }
     public static func preview(_ item: Item, action: MP3TagAction, keep: Set<MP3KeepTag>) -> MP3TagFile {
+        previewFile(item, action: action, keep: keep, temporary: false)
+    }
+    static func previewFile(_ item: Item, action: MP3TagAction, keep: Set<MP3KeepTag>, temporary: Bool) -> MP3TagFile {
         var result = MP3TagFile(url: item.url)
         do {
-            guard item.url.pathExtension.lowercased() == "mp3" else { throw fail("Only MP3 files are supported.") }
+            guard item.url.pathExtension.lowercased() == "mp3" || (temporary && item.url.lastPathComponent.hasPrefix(".library-filer-") && item.url.pathExtension == "partial") else { throw fail("Only MP3 files are supported.") }
             if action == .purge && keep == Set(MP3KeepTag.allCases) { return result }
             let fd = try sourceFD(item.url); defer { close(fd) }
             var st = stat(); guard fstat(fd, &st) == 0, st.st_nlink == 1 else { throw fail("Hard-linked files are excluded from tag changes.") }

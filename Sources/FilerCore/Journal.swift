@@ -12,6 +12,7 @@ import Darwin
 public struct Event: Codable, Identifiable {
     public var id = UUID(); public var date = Date(); public var operation: UUID; public var row: PlanRow; public var state: String; public var detail: String; public var temporary: String?
     public var resultIdentity: Fingerprint?
+    public var hasMagicTagChanges: Bool { row.magicMP3?.willChange == true }
 }
 public final class Journal {
     private var db: OpaquePointer?
@@ -80,7 +81,7 @@ public final class Cancellation: @unchecked Sendable {
     public func cancel() { lock.lock(); value = true; lock.unlock() }
     public var cancelled: Bool { lock.lock(); defer { lock.unlock() }; return value }
 }
-public enum Fault: String { case none, afterCopy, verification, afterPublish, beforeDelete, afterCaseStage }
+public enum Fault: String { case none, afterCopy, verification, afterPublish, beforeDelete, afterCaseStage, magicTagFailure, magicPurgeFailure }
 public struct ExecutionResult { public var completed = 0; public var failed = 0; public var details: [String] = [] }
 public final class Executor {
     public let journal: Journal
@@ -122,7 +123,8 @@ public final class Executor {
         let target = try Directory(destURL.deletingLastPathComponent().path)
         try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent, excluding: row.caseOnly == true ? sourceURL.lastPathComponent : nil)
         guard try Fingerprint(fd: source) == row.fingerprint else { throw fail("Source changed before execution.") }
-        if plan.mode != .copy && srcParent.device == target.device && !forceCopyMove {
+        let magicTagChanges = row.magicMP3?.willChange == true
+        if plan.mode != .copy && srcParent.device == target.device && !forceCopyMove && !magicTagChanges {
             try exclusivePathRename(source: sourceURL, destination: destURL, faultAfterStage: fault == .afterCaseStage, verify: { url in
                 let check = try sourceFD(url); defer { close(check) }
                 let actual = try Fingerprint(fd: check), held = try Fingerprint(fd: source)
@@ -137,8 +139,8 @@ public final class Executor {
         let tempName = ".library-filer-\(UUID().uuidString).partial"
         let tempPath = destURL.deletingLastPathComponent().appendingPathComponent(tempName).path
         try journal.record(plan.id, row: row, state: "Creating temporary copy", temporary: tempPath)
-        let temp = openat(target.fd, tempName, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
-        guard temp >= 0 else { throw fail("Cannot exclusively create temporary copy.") }; defer { close(temp) }
+        var temp = openat(target.fd, tempName, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
+        guard temp >= 0 else { throw fail("Cannot exclusively create temporary copy.") }; defer { if temp >= 0 { close(temp) } }
         try journal.record(plan.id, row: row, state: "Copying", temporary: tempPath, identity: try Fingerprint(fd: temp))
         guard lseek(source, 0, SEEK_SET) >= 0 else { throw fail("Source seek failed.") }
         // fcopyfile copies payload, stat data, resource forks and extended attributes supported by the target.
@@ -146,6 +148,17 @@ public final class Executor {
         guard fsync(temp) == 0 else { throw fail("Cannot flush copied file. Source retained; temporary: \(tempPath)") }
         if fault == .afterCopy { throw fail("Injected interruption after copy. Temporary: \(tempPath)") }
         guard fault != .verification, try Fingerprint(fd: temp).size == row.fingerprint?.size, try digest(fd: temp) == row.hash, try Fingerprint(fd: source) == row.fingerprint, try digest(fd: source) == row.hash else { throw fail("Verification failed. Source retained; temporary: \(tempPath)") }
+        var completedRow = row
+        if magicTagChanges, let recipe = row.magicMP3 {
+            try journal.record(plan.id, row: row, state: "Preparing Magic MP3 tags", detail: (recipe.update ? "Update tags. " : "") + (recipe.purge ? "Purge unchecked tags. " : "") + "Prepared before library publication. No tag Undo or retained backup.", temporary: tempPath)
+            guard fault != .magicTagFailure else { throw fail("Injected Magic tag failure. Library file not published; workspace source retained.") }
+            close(temp); temp = -1
+            do { try MP3TagWriter.executeMagic(recipe, temporary: URL(fileURLWithPath: tempPath), failBeforePurge: fault == .magicPurgeFailure) }
+            catch { throw fail("Magic MP3 preparation failed; workspace source retained and final library file not published. Staging file: " + tempPath + ". " + error.localizedDescription) }
+            temp = try sourceFD(URL(fileURLWithPath: tempPath))
+            completedRow.hash = try digest(fd: temp)
+            guard try Fingerprint(fd: source) == row.fingerprint, try digest(fd: source) == row.hash else { throw fail("Source changed during library preparation; no library file published. Temporary: \(tempPath)") }
+        }
         try journal.record(plan.id, row: row, state: "Publishing verified copy", temporary: tempPath, identity: try Fingerprint(fd: temp))
         let currentRoot = try Directory(plan.mode == .clean ? srcParent.path : plan.profile.root)
         let currentTarget = try Directory(target.path)
@@ -153,7 +166,7 @@ public final class Executor {
         try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent)
         guard renameatx_np(target.fd, tempName, target.fd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw fail("Exclusive publish failed. Source retained; temporary: \(tempPath)") }
         _ = fsync(target.fd)
-        try journal.record(plan.id, row: row, state: "Copied", detail: plan.mode == .copy ? "Source retained" : "Move pending source removal", identity: try Fingerprint(fd: temp))
+        try journal.record(plan.id, row: completedRow, state: "Copied", detail: plan.mode == .copy ? "Source retained" : "Move pending source removal", identity: try Fingerprint(fd: temp))
         if fault == .afterPublish { throw fail("Injected interruption after publication; both copies retained.") }
         if plan.mode != .copy {
             // Removing an open file by pathname cannot be made conditional on inode on macOS.
@@ -173,7 +186,7 @@ public final class Executor {
             try journal.record(plan.id, row: row, state: "Removing verified claimed source", temporary: holdingPath, identity: claimedID)
             guard unlinkat(srcParent.fd, holding, 0) == 0 else { throw fail("Verified copy published, source retained at \(holdingPath).") }
             _ = fsync(srcParent.fd)
-            try journal.record(plan.id, row: row, state: "Moved", identity: try Fingerprint(fd: temp))
+            try journal.record(plan.id, row: completedRow, state: "Moved", identity: try Fingerprint(fd: temp))
         }
     }
     public func recoverCaseStage(_ event: Event) throws {
@@ -194,6 +207,7 @@ public final class Executor {
         try journal.record(event.operation, row: event.row, state: "Recovered original location", identity: try Fingerprint(fd: fd))
     }
     public func undo(_ event: Event, allowDeleteCopy: Bool) throws {
+        guard !event.hasMagicTagChanges else { throw fail("Magic included MP3 tag changes. This operation has no automatic Undo or retained tag backup.") }
         guard event.date >= Date().addingTimeInterval(-30 * 24 * 60 * 60) else { throw fail("This operation’s 30-day Undo period has expired.") }
         guard ["Copied", "Moved"].contains(event.state), event.resultIdentity != nil else { throw fail("This event cannot be automatically undone.") }
         let row = event.row; let dest = URL(fileURLWithPath: row.destination); let parent = try Directory(dest.deletingLastPathComponent().path)
