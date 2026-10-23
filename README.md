@@ -126,6 +126,10 @@ Operation history expires after **30 days**. Explicitly remembered corrections p
 
 **Tools → Clean Folder Names…** previews renaming selected direct child folders with their contents. It does not recursively reorganize folders.
 
+## Development disclaimer
+
+Shelf Elf Librarian was developed using **OpenAI Codex**, with human direction and review. AI-assisted development and automated tests do not guarantee error-free behavior. This is alpha software; test changes on disposable copies with independent backups before renaming, moving, or updating or purging tags in an original library.
+
 ## Alpha limitations and validation
 
 Start with disposable files and keep backups of important originals. Build 59 passes **91 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
