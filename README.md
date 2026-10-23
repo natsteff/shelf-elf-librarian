@@ -10,9 +10,15 @@ Your libraries, neatly shelved.
 
 Shelf Elf Librarian helps you review filenames, rename selected files, and copy or move them into organized libraries. Profiles define how to read existing names, build proposed names, and choose destination folders. Processing stays local: no accounts, telemetry, online identification service or unattended filing.
 
+## Workspace preview
+
+![Shelf Elf Librarian Build 60 showing video filename proposals, highlighted differences, filename components and a library filing preview action](docs/images/workspace-build-60.png)
+
+Review proposed filename changes alongside interpreted components, media categories and resolution before applying an operation.
+
 ## Download and run
 
-The current published download is Build 59; this source describes Build 60. Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-build.59), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
+Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-build.60), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
 
 This alpha is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
 
