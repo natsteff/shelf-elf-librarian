@@ -115,13 +115,16 @@ struct ProfileSettingsContent: View {
             }
             Button("Load defaults for this content type") {
                 var p = suggested
-                p.id = profile.id; p.notes = profile.notes; p.root = profile.root; p.bookmark = profile.bookmark; p.rootIdentity = profile.rootIdentity
+                p.id = profile.id; p.notes = profile.notes; p.root = profile.root; p.bookmark = profile.bookmark; p.rootIdentity = profile.rootIdentity; p.smbNoticeLibraries = profile.smbNoticeLibraries
                 profile = p
             }
             SettingsHint(text: "Changing content type or subtype preserves your settings. Load defaults replaces rules, extensions and masks; name, notes and destination are kept.")
             SettingsInput(title: "Extensions (comma separated)", text: $profile.extensions, example: suggested.extensions)
             SettingsHint(text: "Filters files without converting them. Matching ignores case; original extensions are preserved.")
             LabeledContent("Library location") { Text(profile.root.isEmpty ? "Not configured" : profile.root).textSelection(.enabled) }
+            if LibraryStorage.isSMB(profile.root) {
+                Text(LibraryStorage.smbNotice).font(.caption).foregroundStyle(.red)
+            }
             HStack {
                 Button("Choose Library Location…") {
                     let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
@@ -131,6 +134,13 @@ struct ProfileSettingsContent: View {
                             let d = try Directory(url.path)
                             profile.rootIdentity = DirectoryIdentity(device: d.device, inode: d.inode); profile.root = url.path
                             profile.bookmark = try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+                            if LibraryStorage.isSMB(url.path), !(profile.smbNoticeLibraries ?? []).contains(url.path) {
+                                profile.smbNoticeLibraries = (profile.smbNoticeLibraries ?? []) + [url.path]
+                                let alert = NSAlert(); alert.messageText = "SMB network library"
+                                alert.informativeText = LibraryStorage.smbNotice
+                                alert.addButton(withTitle: "OK")
+                                DispatchQueue.main.async { WindowPresentation.confirm(alert) { _ in } }
+                            }
                         } catch { validation = error.localizedDescription }
                     }
                 }
@@ -201,10 +211,13 @@ struct ProfileSettingsContent: View {
             SettingsInput(title: "Filename suffix (optional)", text: $profile.suffix, example: " - Reviewed")
             if profile.kind == .music {
                 Toggle("Music first-letter bucket", isOn: $profile.bucket)
+                if profile.bucket {
+                    TextField("Number bucket", text: Binding(get: { profile.rules.numericBucket }, set: { var r = profile.rules; r.numericBucket = $0; profile.rules = r }))
+                    TextField("Symbol bucket", text: Binding(get: { profile.rules.symbolBucket }, set: { var r = profile.rules; r.symbolBucket = $0; profile.rules = r }))
+                    Toggle("Ignore leading The for bucket only", isOn: Binding(get: { profile.rules.ignoreLeadingThe }, set: { var r = profile.rules; r.ignoreLeadingThe = $0; profile.rules = r }))
+                }
                 SettingsInput(title: "Individual tracks folder", text: $profile.individualTracks, example: "Individual Tracks")
-                TextField("Number bucket", text: Binding(get: { profile.rules.numericBucket }, set: { var r = profile.rules; r.numericBucket = $0; profile.rules = r }))
-                TextField("Symbol bucket", text: Binding(get: { profile.rules.symbolBucket }, set: { var r = profile.rules; r.symbolBucket = $0; profile.rules = r }))
-                Toggle("Ignore leading The for bucket only", isOn: Binding(get: { profile.rules.ignoreLeadingThe }, set: { var r = profile.rules; r.ignoreLeadingThe = $0; profile.rules = r }))
+                Text("Artist name formatting").font(.headline)
                 Toggle("Move leading “The” to end of artist name", isOn: Binding(get: { profile.rules.artistTheToEnd ?? false }, set: { var r = profile.rules; r.artistTheToEnd = $0; profile.rules = r }))
                 SettingsHint(text: "The Beatles → Beatles, The. Changes the Artist component used in proposed names, folders and buckets. Embedded tags remain unchanged. Independent of Ignore leading The for bucket only; both options default off.")
             }

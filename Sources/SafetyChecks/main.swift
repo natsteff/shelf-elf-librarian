@@ -1156,6 +1156,26 @@ final class FilerCoreTests {
 }
 
 let suite = FilerCoreTests()
+if let index = CommandLine.arguments.firstIndex(of: "--smb-smoke"), CommandLine.arguments.count > index + 1 {
+    var disposable: URL?
+    do {
+        try suite.setUpWithError()
+        let folder = URL(fileURLWithPath: CommandLine.arguments[index + 1]).appendingPathComponent("Shelf-Elf-Disposable-Test-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false); disposable = folder
+        suite.library = folder; suite.p.root = folder.path
+        XCTAssertTrue(LibraryStorage.isSMB(folder.path))
+        // Capture the original protected-rename behavior on disposable files only.
+        let first = folder.appendingPathComponent("rename-probe"), second = folder.appendingPathComponent("rename-result")
+        try Data("probe".utf8).write(to: first)
+        let rc = renamex_np(first.path, second.path, UInt32(RENAME_EXCL))
+        print("SMB protected rename probe: \(rc == 0 ? "supported" : String(cString: strerror(errno)))")
+        try suite.testSMBTransfers(); try suite.testSMBMagic()
+    } catch { failures += 1; print("FAIL SMB smoke: \(error)") }
+    if let disposable { try? FileManager.default.removeItem(at: disposable) }
+    try? suite.tearDownWithError()
+    print("\(failures) failures in disposable SMB checks"); exit(failures == 0 ? 0 : 1)
+}
+
 do { try suite.setUpWithError(); try suite.testCopyAndGuardedUndo(); try suite.tearDownWithError(); print("Checked testCopyAndGuardedUndo") } catch { failures += 1; print("FAIL testCopyAndGuardedUndo: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testSameVolumeMoveUndoAndOccupiedSource(); try suite.tearDownWithError(); print("Checked testSameVolumeMoveUndoAndOccupiedSource") } catch { failures += 1; print("FAIL testSameVolumeMoveUndoAndOccupiedSource: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testVerifiedCopyMoveEngine(); try suite.tearDownWithError(); print("Checked testVerifiedCopyMoveEngine") } catch { failures += 1; print("FAIL testVerifiedCopyMoveEngine: \(error)"); try? suite.tearDownWithError() }
@@ -1251,4 +1271,8 @@ do { try suite.setUpWithError(); try suite.testBuiltInMusicAndVideoParsing(); tr
 do { try suite.setUpWithError(); try suite.testSchemaTwoMediaProfileRepair(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL saved media repair: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testCommonVideoResolutionSetting(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL resolution shorthand: \(error)"); try? suite.tearDownWithError() }
 do { try suite.setUpWithError(); try suite.testVideoResolutionRoundTrip(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL video resolution round trip: \(error)"); try? suite.tearDownWithError() }
-print("\(failures) failures across 95 fixture scenarios"); exit(failures == 0 ? 0 : 1)
+do { try suite.setUpWithError(); try suite.testSMBTransfers(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL SMB transfers: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testSMBMagic(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL SMB Magic: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testSettingsBackupRetentionAndRestore(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL settings backup retention/restore: \(error)"); try? suite.tearDownWithError() }
+do { try suite.setUpWithError(); try suite.testSettingsBackupFailureAndIsolation(); try suite.tearDownWithError() } catch { failures += 1; print("FAIL settings backup failure/isolation: \(error)"); try? suite.tearDownWithError() }
+print("\(failures) failures across 99 fixture scenarios"); exit(failures == 0 ? 0 : 1)

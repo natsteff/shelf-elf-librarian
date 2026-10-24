@@ -252,11 +252,11 @@ extension FilerCoreTests {
 }
 
 extension FilerCoreTests {
-    private func magicMusic() -> Profile {
+    func magicMusic() -> Profile {
         var p = Profile(.music); p.root = library.path; p.rootAllowed = true; p.folderMask = ""; p.filenameMask = "{Artist} - {Title}"
         p.rules.useMagic = true; p.classifications = [FilingType("Pop"), FilingType("Rock")]; return p
     }
-    private func magicSong(_ name: String = "Original Artist - Original Song.mp3", title: String = "New Song") throws -> Item {
+    func magicSong(_ name: String = "Original Artist - Original Song.mp3", title: String = "New Song") throws -> Item {
         var f = Fields(); f.artist = "New Artist"; f.title = title; f.album = "New Album"; f.year = "2024"; f.trackNumber = "03"; f.genre = "Pop"
         let art = tagFrame("APIC", Data([0, 1, 2, 3, 4]))
         let comment = tagFrame("COMM", Data([3]) + Data("eng".utf8) + Data([0]) + Data("Comment".utf8))

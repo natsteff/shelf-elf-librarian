@@ -8,13 +8,18 @@ import SwiftUI
         if candidate is NSSavePanel { candidate = candidate?.sheetParent ?? NSApp.mainWindow }
         if candidate?.identifier?.rawValue.hasPrefix("shelf.info.") == true { candidate = candidate?.parent ?? NSApp.mainWindow }
         if candidate == nil { candidate = NSApp.orderedWindows.first { $0.isVisible && $0.canBecomeMain } }
-        while let attached = candidate?.attachedSheet { candidate = attached }
+        while let attached = candidate?.attachedSheet, !(attached is NSSavePanel) { candidate = attached }
         return candidate
     }
     static func choose(_ panel: NSSavePanel, completion: @escaping (NSApplication.ModalResponse) -> Void) {
         HoverHelp.shared.hide()
-        if let parent = activeWindow { panel.beginSheetModal(for: parent, completionHandler: completion) }
-        else { panel.begin(completionHandler: completion) }
+        // Run follow-up UI after the chooser has detached; otherwise a confirmation
+        // can attach to the closing chooser and disappear with it.
+        let finished: (NSApplication.ModalResponse) -> Void = { response in
+            DispatchQueue.main.async { completion(response) }
+        }
+        if let parent = activeWindow { panel.beginSheetModal(for: parent, completionHandler: finished) }
+        else { panel.begin(completionHandler: finished) }
     }
     static func confirm(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
         HoverHelp.shared.hide()

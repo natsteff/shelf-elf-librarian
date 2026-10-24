@@ -42,6 +42,7 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var mp3TagsToKeep: Set<MP3KeepTag>?
     public var bookSubtype: BookSubtype?
     public var effectiveBookSubtype: BookSubtype { bookSubtype ?? .audiobook }
+    public var smbNoticeLibraries: [String]?
     public var root = ""
     public var bookmark: Data?
     public var rootIdentity: DirectoryIdentity?

@@ -43,7 +43,7 @@ extension Model {
         var next = profiles
         next[index].classifications = (next[index].classifications ?? []) + [FilingType(name)]
         try PatternEngine.validate(next[index])
-        try JSONEncoder().encode(next).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
+        try persistProfiles(next, reason: "Add filing type: " + name)
         profiles = next; invalidate()
     }
 }

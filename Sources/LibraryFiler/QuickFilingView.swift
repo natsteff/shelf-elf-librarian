@@ -6,6 +6,9 @@ struct QuickFilingView: View {
     @EnvironmentObject var m: Model
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let transfer = m.transferPlan {
+                TransferProgressView(plan: transfer)
+            } else {
             Text(m.quickIsMagic ? "Confirm Run Magic" : m.quickKeepNames ? "Confirm Copy or Move — Keep Current Filenames" : "Confirm Copy or Move").font(.title2.bold())
             if m.quickIsMagic {
                 Label("Review this Magic run before continuing. It will apply proposed filenames and the Copy/Move action below. Confirm only if these files, settings and destinations are correct.", systemImage: "exclamationmark.triangle.fill")
@@ -14,7 +17,7 @@ struct QuickFilingView: View {
             Picker("Operation", selection: $m.quickMode) {
                 Text("Copy to Library").tag(Mode.copy)
                 Text("Move to Library").tag(Mode.move)
-            }.pickerStyle(.segmented).disabled(m.busy).onChange(of: m.quickMode) { m.rebuildQuickFiling(m.quickMode) }
+            }.pickerStyle(.radioGroup).horizontalRadioGroupLayout().disabled(m.busy).onChange(of: m.quickMode) { m.rebuildQuickFiling(m.quickMode) }
             Text(m.quickKeepNames ? "Individual component confirmation is skipped for this operation. Current filenames are preserved; folder masks still determine destinations." : "Individual component confirmation is skipped for this operation. Proposed filenames and the profile’s folder masks determine library destinations.")
             if let plan = m.quickPlan {
                 Text("Profile: " + plan.profile.name).font(.headline)
@@ -37,7 +40,7 @@ struct QuickFilingView: View {
                 HStack {
                     Button("Cancel") { m.cancelQuickFiling() }.keyboardShortcut(.cancelAction)
                     Spacer()
-                    Button(plan.magicRun == true ? "Run Magic & \(plan.mode == .copy ? "Copy" : "Move") \(ready) Files" : "Confirm \(plan.mode == .copy ? "Copy" : "Move") \(ready) Files") { m.applyQuickFiling() }
+                    Button(plan.magicRun == true ? "Run Magic & \(plan.mode == .copy ? "Copy" : "Move") \(ready) Files" : "\(plan.mode == .copy ? "Copy" : "Move") \(ready) Files") { m.applyQuickFiling() }
                         .buttonStyle(.borderedProminent).disabled(ready == 0 || m.busy)
                 }
             } else {
@@ -51,6 +54,8 @@ struct QuickFilingView: View {
                     Button("Back to Workspace") { m.showQuickFiling = false }.keyboardShortcut(.cancelAction)
                 }
             }
+            }
         }.padding(20).frame(width: 930, height: 700)
+        .interactiveDismissDisabled(m.transferPlan != nil)
     }
 }

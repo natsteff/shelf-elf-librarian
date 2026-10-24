@@ -10,7 +10,11 @@ import FilerCore
 
 enum AppIdentity {
     static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Shelf Elf Librarian"
-    static var version: String { "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0") Alpha (Build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"))" }
+    static var version: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+        let release = Bundle.main.object(forInfoDictionaryKey: "ShelfElfReleaseLabel") as? String ?? "Beta 1"
+        return "\(version) \(release)"
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -26,8 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var body: some Scene {
         WindowGroup(AppIdentity.name) { MainView().environmentObject(model).frame(minWidth: 1100, minHeight: 700) }
             .defaultSize(width: 1320, height: 850)
-            .windowStyle(.hiddenTitleBar)
-            .windowToolbarStyle(.unified)
+            .windowStyle(.titleBar)
+            .windowToolbarStyle(.unified(showsTitle: false))
             .commands {
                 CommandGroup(replacing: .appInfo) {
                     Button("About \(AppIdentity.name)") { WindowPresentation.about() }
@@ -38,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 CommandMenu("Tools") {
                     Button("Export Settings…") { model.exportSettings() }.disabled(model.busy)
                     Button("Import Settings…") { model.importSettings() }.disabled(model.busy)
+                    Button("Restore Settings Backup…") { model.showSettingsBackups = true }.disabled(model.busy)
                     Divider()
                     Button("Update MP3 Tags from Components…") { model.prepareMP3Tags(.update) }.disabled(model.busy || model.active.kind != .music || model.visibleSelected.isEmpty)
                     Button("Purge Other MP3 Tags…") { model.prepareMP3Tags(.purge) }.disabled(model.busy || model.active.kind != .music || model.visibleSelected.isEmpty)
@@ -77,6 +82,14 @@ struct WorkspaceSession: Codable {
     @Published var status = "Choose a profile and open a workspace, then review filename cleanup."
     @Published var progress = ""
     @Published var plan: Plan?
+    @Published var transferPlan: Plan?
+    @Published var transferSummary: String?
+    @Published var transferDetails: [String] = []
+    func dismissTransfer() {
+        guard !busy else { return }
+        showReview = false; showQuickFiling = false
+        transferPlan = nil; transferSummary = nil; transferDetails = []
+    }
     @Published var showReview = false
     @Published var showQuickFiling = false
     @Published var quickPlan: Plan?
@@ -111,6 +124,7 @@ struct WorkspaceSession: Codable {
         return UniversalPreferences.suggestedDefaults
     }()
     var sharedExceptions: String { universalPreferences.combined }
+    @Published var showSettingsBackups = false
     @Published var showGeneralSettings = false
     var active: Profile {
         var p = profiles.first { $0.id == activeID } ?? newProfile
@@ -121,7 +135,9 @@ struct WorkspaceSession: Codable {
     func saveGeneralSettings(_ preferences: UniversalPreferences) throws {
         guard !busy else { throw fail("Wait for the current operation to finish.") }
         try preferences.validate()
+        guard preferences != universalPreferences else { return }
         let data = try JSONEncoder().encode(preferences)
+        try backupConfiguration("Save General Settings")
         AppEnvironment.defaults.set(data, forKey: "universalSpellingCasePreferences")
         universalPreferences = preferences
         HoverHelp.shared.timing = preferences.hoverTiming ?? .immediate
@@ -229,23 +245,28 @@ struct WorkspaceSession: Codable {
         do {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             let profilesURL = support.appendingPathComponent("profiles.json")
+            if let demoRoot = AppEnvironment.screenshotRoot {
+                let root = URL(fileURLWithPath: demoRoot)
+                let archive = try JSONDecoder().decode(SettingsArchive.self, from: Data(contentsOf: root.appendingPathComponent("Demo Settings.json")))
+                let demoProfiles = try archive.validatedProfiles()
+                try ProfileSettingsStore.write(demoProfiles, to: profilesURL)
+                universalPreferences = archive.general; mode = archive.general.filingAction
+                AppEnvironment.defaults.set(try JSONEncoder().encode(archive.general), forKey: "universalSpellingCasePreferences")
+                AppEnvironment.defaults.set(archive.activeProfileID?.uuidString, forKey: "lastProfile")
+                AppEnvironment.defaults.removeObject(forKey: "workspaceSession")
+                AppEnvironment.defaults.set(root.appendingPathComponent("Workspace/Music").path, forKey: "recentWorkspace")
+            }
             if FileManager.default.fileExists(atPath: profilesURL.path) { profiles = try ProfileSettingsStore.read(from: profilesURL) }
             else { profiles = ProfileSetup.starterProfiles; try ProfileSettingsStore.write(profiles, to: profilesURL) }
             let migratedProfiles = try profiles.map { try ProfileSetup.migrate($0) }
             if migratedProfiles != profiles {
-                let backup = support.appendingPathComponent("Settings before pattern migration-\(UUID().uuidString).json")
-                try JSONEncoder().encode(SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: nil)).write(to: backup, options: .atomic)
                 let migrated = migratedProfiles
-                try JSONEncoder().encode(migrated).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
+                try persistProfiles(migrated, reason: "Profile pattern migration")
                 profiles = migrated
             }
             let described = profiles.map { StarterDescriptions.fillingBlankNotes(ProfileSetup.addingMissingVideoTypes(ProfileSetup.updatingVideoDefaults($0))) }
             if described != profiles {
-                if profiles.map({ ProfileSetup.addingMissingVideoTypes(ProfileSetup.updatingVideoDefaults($0)) }) != profiles {
-                    let backup = support.appendingPathComponent("Settings before video defaults update-\(UUID().uuidString).json")
-                    try JSONEncoder().encode(SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: nil)).write(to: backup, options: .atomic)
-                }
-                try JSONEncoder().encode(described).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
+                try persistProfiles(described, reason: "Update starter profile defaults/descriptions")
                 profiles = described
             }
             activeID = UUID(uuidString: AppEnvironment.defaults.string(forKey: "lastProfile") ?? "") ?? profiles.first?.id ?? newProfile.id
@@ -266,7 +287,7 @@ struct WorkspaceSession: Codable {
         try p.validate()
         var next = profiles
         if let i = next.firstIndex(where: { $0.id == p.id }) { next[i] = p } else { next.append(p) }
-        try ProfileSettingsStore.write(next, to: support.appendingPathComponent("profiles.json"))
+        try persistProfiles(next, reason: "Save profile: " + p.name)
         profiles = next; activeID = p.id; changeProfile(); showSettings = false
     }
     func deleteProfile(_ id: UUID) throws {
@@ -274,7 +295,7 @@ struct WorkspaceSession: Codable {
         guard profiles.contains(where: { $0.id == id }) else { throw fail("This profile is no longer saved.") }
         let next = profiles.filter { $0.id != id }
         // Persist first: a failed write must leave the current profile and preview intact.
-        try JSONEncoder().encode(next).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
+        try persistProfiles(next, reason: "Delete profile: " + (profiles.first { $0.id == id }?.name ?? "Profile"))
         profiles = next
         if activeID == id { activeID = next.first?.id ?? newProfile.id }
         showSettings = false
@@ -386,7 +407,7 @@ struct WorkspaceSession: Codable {
                         let bookmark = try URL(fileURLWithPath: profile.root).bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
                         var next = self.profiles
                         next[i].rootIdentity = replacement; next[i].bookmark = bookmark
-                        try ProfileSettingsStore.write(next, to: self.support.appendingPathComponent("profiles.json"))
+                        try self.persistProfiles(next, reason: "Reconnect library: " + profile.name)
                         self.profiles = next; self.invalidate()
                         var rebound = profile; rebound.rootIdentity = replacement; rebound.bookmark = bookmark
                         onReconnect(rebound)
@@ -448,7 +469,11 @@ struct WorkspaceSession: Codable {
             if reviewWasVisible { self.pendingSkipFiling = true; self.showReview = false }
             else { self.rebuildQuickFiling(p.mode) }
         }) { return }
-        busy = true; showReview = false; showQuickFiling = false
+        if p.mode != .clean {
+            transferPlan = p; transferSummary = nil; transferDetails = []
+            if !showReview && !showQuickFiling { showReview = true }
+        } else { showReview = false; showQuickFiling = false }
+        busy = true; progress = "Preparing transfer…"
         cancellation = Cancellation(); let token = cancellation
         let db = support.appendingPathComponent("operations.sqlite")
         Task {
@@ -459,11 +484,24 @@ struct WorkspaceSession: Codable {
                     return try Executor(journal: j).execute(p, cancel: token) { done, total in Task { @MainActor in self.progress = "\(done.formatted()) / \(total.formatted()) files" } }
                 }.value
                 summary = "\(r.completed) completed • \(r.failed) failed. \(token.cancelled ? "Cancelled; completed items remain completed." : "")"
-                if !r.details.isEmpty { error = r.details.joined(separator: "\n\n") }
-            } catch { self.error = error.localizedDescription }
+                if transferPlan != nil {
+                    let action = p.mode == .copy ? "Copy" : "Move"
+                    let verb = p.mode == .copy ? "copied" : "moved"
+                    let outcome = token.cancelled ? "cancelled" : r.failed > 0 ? "finished with errors" : "complete"
+                    transferSummary = "\(action) \(outcome) — \(r.completed) \(verb), \(r.failed) failed"
+                    transferDetails = r.details
+                } else if !r.details.isEmpty { error = r.details.joined(separator: "\n\n") }
+            } catch {
+                if transferPlan != nil { transferSummary = "\(p.mode == .copy ? "Copy" : "Move") stopped"; transferDetails.append(error.localizedDescription) }
+                else { self.error = error.localizedDescription }
+            }
             let completed: Set<String>
             do { completed = OperationPresentation.completedSources(plan: p, events: try Journal(url: db).events()) }
-            catch { completed = []; self.error = "Could not read operation completion details. Review History. " + error.localizedDescription }
+            catch {
+                completed = []
+                let detail = "Could not read operation completion details. Review History. " + error.localizedDescription
+                if transferPlan != nil { transferDetails.append(detail) } else { self.error = detail }
+            }
             selected.subtract(completed)
             for id in completed { tagEditsBefore.removeValue(forKey: id) }
             if p.mode == .move {
@@ -478,7 +516,10 @@ struct WorkspaceSession: Codable {
                         let updated = OperationPresentation.reconcile(existing: existing, scanned: fresh.items, selected: remainingSelection, completed: completed, rememberNew: profile.rememberCorrectionsByDefault ?? true)
                         items = updated.items; selected = updated.selected; excluded = fresh.excluded
                         let ids = Set(items.map(\.id)); directRenameUndo = directRenameUndo.filter { ids.contains($0.key) }
-                    } catch { self.error = "Workspace refresh was incomplete. Click Refresh to reload it. " + error.localizedDescription }
+                    } catch {
+                        let detail = "Workspace refresh was incomplete. Click Refresh to reload it. " + error.localizedDescription
+                        if transferPlan != nil { transferDetails.append(detail) } else { self.error = detail }
+                    }
                 }
             }
             status = summary; busy = false; progress = ""; plan = nil; quickPlan = nil; categoryConfirmed = false; loadHistory()
@@ -685,19 +726,6 @@ struct MainView: View {
     var version: String { AppIdentity.version }
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                    WorkspaceProfilePicker().environmentObject(m)
-                    Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "gearshape") }
-                        .labelStyle(.iconOnly).instantHelp("Profile Settings")
-                    Button { m.showGeneralSettings = true } label: { Label("General Settings", systemImage: "slider.horizontal.3") }
-                        .labelStyle(.iconOnly).instantHelp("General Settings")
-                    Button { m.loadHistory(); m.showHistory = true } label: { Label("History", systemImage: "clock") }
-                        .labelStyle(.iconOnly).instantHelp("History & Undo")
-                    Spacer(minLength: 20)
-                    WorkspaceBrand()
-                }.disabled(m.busy || showSplash)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-            Divider()
             WorkspaceLocationBar().environmentObject(m)
             Divider()
             WorkspaceActionBar().environmentObject(m)
@@ -708,10 +736,10 @@ struct MainView: View {
                             Toggle("Include all visible files", isOn: Binding(get: { !m.visible.isEmpty && m.visible.allSatisfy { m.selected.contains($0.id) } }, set: { _ in m.toggleVisibleSelection() }))
                                 .labelsHidden().frame(width: 28).instantHelp("Select all visible files, or clear them when all are selected.")
                             sortHeader("Current / proposed filename", column: "name").frame(maxWidth: .infinity, alignment: .leading)
-                            sortHeader("Type / size", column: "type").frame(width: 70)
-                            sortHeader("Name status", column: "ok").frame(width: 100, alignment: .leading)
-                            sortHeader("Filing", column: "confirmation").frame(width: 44)
-                        }.buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                            sortHeader("Type / size", column: "type").frame(width: 80)
+                            sortHeader("Name status", column: "ok").frame(width: 128, alignment: .leading)
+                            sortHeader("Filing", column: "confirmation").frame(width: 52)
+                        }.buttonStyle(.plain).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                         Divider()
@@ -725,13 +753,13 @@ struct MainView: View {
                                 Toggle("Include", isOn: Binding(get: { m.selected.contains(item.id) }, set: { if $0 { m.selected.insert(item.id) } else { m.selected.remove(item.id) }; m.invalidate() })).labelsHidden().frame(width: 28)
                                 FilenameComparisonView(item: item, nameMatches: nameMatches, spellingReviewChanged: { review in if review { spellingReview.insert(item.id) } else { spellingReview.remove(item.id) } }).environmentObject(m)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                VStack(alignment: .center) { Text(item.url.pathExtension.uppercased()); Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)) }.font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 70, alignment: .center).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
+                                VStack(alignment: .center) { Text(item.url.pathExtension.uppercased()); Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)) }.font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 80, alignment: .center).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
                                 Text(nameMatches ? (spellingReview.contains(item.id) ? "Spelling review" : "Unchanged") : proposal == nil ? "Needs attention" : "Rename proposed")
-                                    .font(.system(size: 11)).foregroundStyle(nameMatches ? (spellingReview.contains(item.id) ? Color.orange : Color.secondary) : proposal == nil ? Color.orange : Color.accentColor)
-                                    .frame(width: 100, alignment: .leading).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
+                                    .font(.system(size: 13)).foregroundStyle(nameMatches ? (spellingReview.contains(item.id) ? Color.orange : Color.secondary) : proposal == nil ? Color.orange : Color.accentColor)
+                                    .frame(width: 128, alignment: .leading).contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
                                     .instantHelp(nameMatches ? (spellingReview.contains(item.id) ? "Unrecognized source words need review. Choose a replacement to create a rename proposal." : "Filename already matches—no rename needed.") : "Proposed filename differs from the current filename.")
                                 Image(systemName: item.reviewed ? "checkmark.circle.fill" : "circle.dashed")
-                                    .foregroundStyle(.secondary).frame(width: 44)
+                                    .foregroundStyle(.secondary).frame(width: 52)
                                     .accessibilityLabel(item.reviewed ? "Components confirmed for filing" : "Components unconfirmed for filing")
                                     .contentShape(Rectangle()).onTapGesture { m.selectRow(item.id) }
                                     .instantHelp(item.reviewed ? "Filename components confirmed for filing. Direct renames are separate. Preview still checks required values and destination conflicts." : "For filing, select this file and confirm its filename components in the right panel. Direct renaming does not confirm components.")
@@ -756,15 +784,44 @@ struct MainView: View {
                     if let id = m.filenameFocusID { filenameScroll.scrollTo(id, anchor: .center) }
                 }
                 }
-                }.frame(minWidth: 600, maxWidth: .infinity)
+                }.frame(minWidth: 660, maxWidth: .infinity)
                 FieldEditor().frame(minWidth: 280, idealWidth: 340, maxWidth: .infinity)
                     .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
             }
             Divider()
             WorkspaceFilingBar().environmentObject(m)
             Divider()
-            Color.clear.frame(height: 48) // Status controls are rendered once, outside the disabled workspace.
+            Color.clear.frame(height: 52) // Status controls are rendered once, outside the disabled workspace.
 
+        }
+        .toolbar {
+            UnsharedToolbarItem(placement: .navigation) {
+                HStack(spacing: 8) {
+                    Link(destination: URL(string: "https://github.com/natsteff/shelf-elf-librarian")!) {
+                        BrandImage(name: "Header-Icon").frame(width: 28, height: 28)
+                    }.buttonStyle(.plain).accessibilityLabel("Shelf Elf Librarian website")
+                        .instantHelp("Open Shelf Elf Librarian on GitHub")
+                    Button { m.showSettings = true } label: { Label("Profile Settings", systemImage: "slider.horizontal.3") }
+                        .labelStyle(.iconOnly).instantHelp("Profile Settings")
+                    WorkspaceProfilePicker().environmentObject(m)
+                }.controlSize(.regular).font(.system(size: 13)).disabled(m.busy || showSplash)
+            }
+            UnsharedToolbarItem(placement: .principal) {
+                WorkspaceTitle()
+            }
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible, placement: .automatic)
+            } else {
+                ToolbarItem(placement: .automatic) { Spacer() }
+            }
+            UnsharedToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 12) {
+                    Button { m.showGeneralSettings = true } label: { Label("General Settings", systemImage: "gearshape") }
+                        .labelStyle(.iconOnly).instantHelp("General Settings")
+                    Button { m.loadHistory(); m.showHistory = true } label: { Label("History", systemImage: "clock") }
+                        .labelStyle(.iconOnly).instantHelp("History & Undo")
+                }.controlSize(.regular).font(.system(size: 13)).disabled(m.busy || showSplash)
+            }
         }
         .background(MainWindowAppearance())
         .disabled(m.busy || showSplash)
@@ -811,6 +868,7 @@ struct MainView: View {
         .sheet(isPresented: $m.showGeneralSettings) { GeneralSettingsView().environmentObject(m) }
         .sheet(isPresented: $m.showSettings) { SettingsView(profile: m.active, existing: m.profiles.contains { $0.id == m.activeID }, save: m.saveProfile, delete: m.deleteProfile).frame(width: 690, height: 740) }
         .sheet(isPresented: $m.showReview, onDismiss: { m.reviewDismissed() }) { ReviewView().environmentObject(m) }
+        .sheet(isPresented: $m.showSettingsBackups) { SettingsBackupsView().environmentObject(m) }
         .sheet(isPresented: $m.showQuickFiling) { QuickFilingView().environmentObject(m) }
         .sheet(isPresented: $m.showMP3Tags) { MP3TagReviewView().environmentObject(m) }
         .sheet(isPresented: $m.showHistory) { HistoryView().environmentObject(m) }
@@ -832,12 +890,12 @@ struct OperationStatusBar: View {
                 } else { Text(m.status).lineLimit(2) }
             }
             if !m.busy && m.workspace != nil {
-                Button("Show excluded filenames") { m.showExcluded = true }.disabled(m.excluded.isEmpty)
+                Button("Show excluded filenames") { m.showExcluded = true }.controlSize(.regular).font(.system(size: 13)).fixedSize().disabled(m.excluded.isEmpty)
             }
             Spacer()
             if !m.busy {
                 Text(m.visibleSelected.isEmpty && m.selected.isEmpty ? "No selection" : "\(m.visibleSelected.count) selected visible" + (m.selected.count > m.visibleSelected.count ? " · \(m.selected.count - m.visibleSelected.count) hidden, excluded from actions" : ""))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
             }
             if m.busy {
                 HStack(spacing: 8) {
@@ -845,9 +903,9 @@ struct OperationStatusBar: View {
                     Text(m.progress).lineLimit(1)
                 }.frame(maxWidth: 300, alignment: .trailing)
                 Button(scanning ? "Cancel Scan" : "Cancel after current file") { m.cancellation.cancel() }
-                    .fixedSize()
+                    .controlSize(.regular).font(.system(size: 13)).fixedSize()
             }
-        }.font(.caption).padding(.horizontal, 16).frame(height: 48)
+        }.font(.system(size: 13)).padding(.horizontal, 16).frame(height: 52)
             .background(Color(nsColor: .windowBackgroundColor))
             .onChange(of: m.busy) { if m.busy { HoverHelp.shared.hide() } }
     }
@@ -1026,14 +1084,18 @@ struct ReviewView: View {
     @State var included: Set<UUID> = []
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let plan = m.plan {
+            if let transfer = m.transferPlan {
+                TransferProgressView(plan: transfer)
+            } else if let plan = m.plan {
                 Text("Review \(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) Operation").font(.title2.bold())
                 Text("\(plan.profile.name) • \(plan.mode == .clean ? "Workspace folders" : plan.profile.root) • file contents remain unchanged").foregroundStyle(.secondary).textSelection(.enabled)
                 GroupedPlanRows(plan: plan, included: $included)
                 Text("Cancellation stops between files. Completed files remain completed. A group may be partially completed; inspect History for recovery.").font(.caption)
                 HStack { Button("Back") { m.showReview = false }; if plan.mode != .clean { Button("Skip Individual Review & \(plan.mode == .copy ? "Copy" : "Move") All…") { m.skipReviewAndFile() } }; Spacer(); Button("\(plan.mode == .clean ? "Rename" : plan.mode.rawValue.capitalized) \(included.count) files") { var p = plan; p.rows = plan.rows.filter { included.contains($0.id) }; m.plan = p; m.apply() }.buttonStyle(.borderedProminent).disabled(included.isEmpty) }
             }
-        }.padding(20).frame(width: 930, height: 700).onAppear { included = Set(m.plan?.rows.filter(\.actionable).map(\.id) ?? []) }
+        }.padding(20).frame(width: 930, height: 700)
+        .interactiveDismissDisabled(m.transferPlan != nil)
+        .onAppear { included = Set(m.plan?.rows.filter(\.actionable).map(\.id) ?? []) }
     }
 }
 struct HistoryView: View {

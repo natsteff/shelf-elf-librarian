@@ -86,19 +86,35 @@ public struct ExecutionResult { public var completed = 0; public var failed = 0;
 public final class Executor {
     public let journal: Journal
     public init(journal: Journal) { self.journal = journal }
-    public func execute(_ plan: Plan, cancel: Cancellation = Cancellation(), fault: Fault = .none, forceCopyMoveForTests: Bool = false, progress: (Int, Int) -> Void = { _, _ in }) throws -> ExecutionResult {
+    public func execute(_ plan: Plan, cancel: Cancellation = Cancellation(), fault: Fault = .none, forceCopyMoveForTests: Bool = false, forceSMBForTests: Bool = false, availableSMBBytesForTests: UInt64? = nil, progress: (Int, Int) -> Void = { _, _ in }) throws -> ExecutionResult {
+        if plan.mode != .clean && (forceSMBForTests || LibraryStorage.isSMB(plan.profile.root)) {
+            // Estimate the whole batch, including staging plus final output for tag-changing files.
+            // This is a preflight guard, not a reservation; runtime verification remains mandatory.
+            var required: UInt64 = 0
+            for row in plan.rows.filter(\.actionable) {
+                let size = UInt64(max(0, row.fingerprint?.size ?? 0))
+                let bytes = size.multipliedReportingOverflow(by: row.magicMP3?.willChange == true ? 2 : 1)
+                let total = required.addingReportingOverflow(bytes.partialValue)
+                guard !bytes.overflow, !total.overflow else { throw fail("Transfer size exceeds the supported space estimate. No files transferred.") }
+                required = total.partialValue
+            }
+            let available = try availableSMBBytesForTests ?? LibraryStorage.availableBytes(plan.profile.root)
+            guard available >= required else {
+                throw fail("Not enough reported free space on the SMB library. Estimated need: \(required.formatted()) bytes; available: \(available.formatted()) bytes. No files transferred; sources retained.")
+            }
+        }
         try journal.plan(plan)
         var createdDirectories: [String: DirectoryIdentity] = [:]
         var result = ExecutionResult(); let rows = plan.rows.filter(\.actionable)
         for (i, row) in rows.enumerated() {
             if cancel.cancelled { result.details.append("Cancelled between files. Completed files remain completed."); break }
-            do { try run(row, plan: plan, fault: fault, forceCopyMove: forceCopyMoveForTests, createdDirectories: &createdDirectories); result.completed += 1 }
+            do { try run(row, plan: plan, fault: fault, forceCopyMove: forceCopyMoveForTests, forceSMB: forceSMBForTests, createdDirectories: &createdDirectories); result.completed += 1 }
             catch { result.failed += 1; result.details.append("\(row.source): \(error.localizedDescription)"); try journal.record(plan.id, row: row, state: "Failed / inspect recovery", detail: error.localizedDescription) }
             progress(i + 1, rows.count)
         }
         return result
     }
-    private func run(_ row: PlanRow, plan: Plan, fault: Fault, forceCopyMove: Bool, createdDirectories: inout [String: DirectoryIdentity]) throws {
+    private func run(_ row: PlanRow, plan: Plan, fault: Fault, forceCopyMove: Bool, forceSMB: Bool, createdDirectories: inout [String: DirectoryIdentity]) throws {
         let sourceURL = URL(fileURLWithPath: row.source), destURL = URL(fileURLWithPath: row.destination)
         let srcParent = try Directory(sourceURL.deletingLastPathComponent().path)
         guard srcParent.device == row.sourceParentDevice, srcParent.inode == row.sourceParentInode else { throw fail("Source directory changed since preview.") }
@@ -123,8 +139,10 @@ public final class Executor {
         let target = try Directory(destURL.deletingLastPathComponent().path)
         try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent, excluding: row.caseOnly == true ? sourceURL.lastPathComponent : nil)
         guard try Fingerprint(fd: source) == row.fingerprint else { throw fail("Source changed before execution.") }
+        let smb = forceSMB || LibraryStorage.isSMB(target.path)
         let magicTagChanges = row.magicMP3?.willChange == true
-        if plan.mode != .copy && srcParent.device == target.device && !forceCopyMove && !magicTagChanges {
+        let directSMB = smb && !magicTagChanges
+        if plan.mode != .copy && srcParent.device == target.device && !forceCopyMove && !magicTagChanges && !smb {
             try exclusivePathRename(source: sourceURL, destination: destURL, faultAfterStage: fault == .afterCaseStage, verify: { url in
                 let check = try sourceFD(url); defer { close(check) }
                 let actual = try Fingerprint(fd: check), held = try Fingerprint(fd: source)
@@ -136,18 +154,18 @@ public final class Executor {
             try journal.record(plan.id, row: row, state: "Moved", identity: identity)
             return
         }
-        let tempName = ".library-filer-\(UUID().uuidString).partial"
+        let tempName = directSMB ? destURL.lastPathComponent : ".library-filer-\(UUID().uuidString).partial"
         let tempPath = destURL.deletingLastPathComponent().appendingPathComponent(tempName).path
-        try journal.record(plan.id, row: row, state: "Creating temporary copy", temporary: tempPath)
+        try journal.record(plan.id, row: row, state: directSMB ? "Creating SMB destination" : "Creating temporary copy", temporary: tempPath)
         var temp = openat(target.fd, tempName, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
-        guard temp >= 0 else { throw fail("Cannot exclusively create temporary copy.") }; defer { if temp >= 0 { close(temp) } }
+        guard temp >= 0 else { throw fail("Cannot exclusively create copy: \(String(cString: strerror(errno))). Source retained; destination: \(tempPath)") }; defer { if temp >= 0 { close(temp) } }
         try journal.record(plan.id, row: row, state: "Copying", temporary: tempPath, identity: try Fingerprint(fd: temp))
         guard lseek(source, 0, SEEK_SET) >= 0 else { throw fail("Source seek failed.") }
         // fcopyfile copies payload, stat data, resource forks and extended attributes supported by the target.
-        guard fcopyfile(source, temp, nil, copyfile_flags_t(COPYFILE_ALL)) == 0 else { throw fail("Copy or metadata preservation failed. Source retained; temporary: \(tempPath)") }
-        guard fsync(temp) == 0 else { throw fail("Cannot flush copied file. Source retained; temporary: \(tempPath)") }
+        guard fcopyfile(source, temp, nil, copyfile_flags_t(COPYFILE_ALL)) == 0 else { throw fail("Copy or metadata preservation failed. Source retained; recovery file: \(tempPath)") }
+        guard fsync(temp) == 0 else { throw fail("Cannot flush copied file. Source retained; recovery file: \(tempPath)") }
         if fault == .afterCopy { throw fail("Injected interruption after copy. Temporary: \(tempPath)") }
-        guard fault != .verification, try Fingerprint(fd: temp).size == row.fingerprint?.size, try digest(fd: temp) == row.hash, try Fingerprint(fd: source) == row.fingerprint, try digest(fd: source) == row.hash else { throw fail("Verification failed. Source retained; temporary: \(tempPath)") }
+        guard fault != .verification, try Fingerprint(fd: temp).size == row.fingerprint?.size, try digest(fd: temp) == row.hash, try Fingerprint(fd: source) == row.fingerprint, try digest(fd: source) == row.hash else { throw fail("Verification failed. Source retained; recovery file: \(tempPath)") }
         var completedRow = row
         if magicTagChanges, let recipe = row.magicMP3 {
             try journal.record(plan.id, row: row, state: "Preparing Magic MP3 tags", detail: (recipe.update ? "Update tags. " : "") + (recipe.purge ? "Purge unchecked tags. " : "") + "Prepared before library publication. No tag Undo or retained backup.", temporary: tempPath)
@@ -162,9 +180,31 @@ public final class Executor {
         try journal.record(plan.id, row: row, state: "Publishing verified copy", temporary: tempPath, identity: try Fingerprint(fd: temp))
         let currentRoot = try Directory(plan.mode == .clean ? srcParent.path : plan.profile.root)
         let currentTarget = try Directory(target.path)
-        guard currentRoot.matches(root), currentTarget.matches(target) else { throw fail("Destination changed before publication. Source retained; temporary: \(tempPath)") }
-        try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent)
-        guard renameatx_np(target.fd, tempName, target.fd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw fail("Exclusive publish failed. Source retained; temporary: \(tempPath)") }
+        guard currentRoot.matches(root), currentTarget.matches(target) else { throw fail("Destination changed before publication. Source retained; recovery file: \(tempPath)") }
+        if !directSMB {
+            try checkCollision(destURL.deletingLastPathComponent(), name: destURL.lastPathComponent)
+            if smb {
+                // Magic tags are prepared privately before copying to an exclusively created final name.
+                try journal.record(plan.id, row: completedRow, state: "Copying prepared SMB file", detail: "Staging: " + tempPath, temporary: destURL.path)
+                let published = openat(target.fd, destURL.lastPathComponent, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
+                guard published >= 0 else { throw fail("SMB destination creation failed: \(String(cString: strerror(errno))). Source retained; staging: \(tempPath)") }
+                defer { close(published) }
+                guard lseek(temp, 0, SEEK_SET) >= 0,
+                      fcopyfile(temp, published, nil, copyfile_flags_t(COPYFILE_ALL)) == 0,
+                      fsync(published) == 0 else { throw fail("SMB copy failed. Source and staging retained: \(tempPath). Inspect incomplete destination: \(destURL.path)") }
+                guard try digest(fd: published) == completedRow.hash else { throw fail("SMB verification failed. Source retained; inspect destination: \(destURL.path). Staging: \(tempPath)") }
+                close(temp); temp = dup(published)
+                guard temp >= 0 else { throw fail("Cannot retain verified SMB destination handle. Source retained.") }
+                _ = unlinkat(target.fd, tempName, 0)
+            } else {
+                guard renameatx_np(target.fd, tempName, target.fd, destURL.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw fail("Exclusive publish failed: \(String(cString: strerror(errno))). Source retained; recovery file: \(tempPath)") }
+            }
+        }
+        let publishedCheck = try sourceFD(destURL); defer { close(publishedCheck) }
+        guard try Fingerprint(fd: publishedCheck) == Fingerprint(fd: temp),
+              try digest(fd: publishedCheck) == completedRow.hash,
+              try Fingerprint(fd: source) == row.fingerprint,
+              try digest(fd: source) == row.hash else { throw fail("Publication/source verification failed. Source retained; inspect destination: \(destURL.path)") }
         _ = fsync(target.fd)
         try journal.record(plan.id, row: completedRow, state: "Copied", detail: plan.mode == .copy ? "Source retained" : "Move pending source removal", identity: try Fingerprint(fd: temp))
         if fault == .afterPublish { throw fail("Injected interruption after publication; both copies retained.") }

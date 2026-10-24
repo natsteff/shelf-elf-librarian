@@ -4,7 +4,7 @@
   <img src="Branding/README-Logo.png" alt="Shelf Elf Librarian — an elf librarian at a laptop in front of a bookshelf" width="720">
 </p>
 
-**0.1.0 Alpha · Build 60** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
+**0.1.0 Beta 1** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
 
 Your libraries, neatly shelved.
 
@@ -12,17 +12,21 @@ Shelf Elf Librarian helps you review filenames, rename selected files, and copy 
 
 ## Workspace preview
 
-![Shelf Elf Librarian Build 60 showing video filename proposals, highlighted differences, filename components and a library filing preview action](docs/images/workspace-build-60.png)
+![Shelf Elf Librarian 0.1.0 Beta 1 showing fictional music files, proposed filename differences and the components inspector](docs/images/beta1-workspace.jpg)
 
-Review proposed filename changes alongside interpreted components, media categories and resolution before applying an operation.
+Review proposed filename changes beside editable components before applying an operation.
+
+![Shelf Elf Beta 1 copy preview grouping fictional tracks by artist and showing source and destination paths](docs/images/beta1-copy-preview.jpg)
+
+Copy/Move previews show destination groups and blocked rows before confirmation. These screenshots use the isolated screenshot edition with fictional filename-only fixtures and demo library paths; no personal media or production settings are shown.
 
 ## Download and run
 
-Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-build.60), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
+Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-beta.1), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
 
-This alpha is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
+This beta is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
 
-The release also includes a **Fresh Install Test** edition with separate preferences, profiles and history. Use the main app normally; use the test edition only to examine first-run behavior and starter defaults. Neither edition includes your own library files or settings.
+The Beta 1 release also includes a **Fresh Install Test** edition with separate preferences, profiles and history. Use the main app normally; use the test edition only to examine first-run behavior and starter defaults. Neither edition includes your own library files or settings.
 
 ## What it does
 
@@ -66,7 +70,7 @@ Documents profiles can define custom components directly in input patterns, then
 
 For audiobooks, `{SeriesName}` aliases `{Series}`. The starter folder mask is `{Author}/{SeriesName?}/{BookFolder}`; BookFolder prefixes BookTitle with SeriesNumber when present. Filename patterns support numbered and unnumbered series. Author, book and chapter fields can also be entered manually.
 
-Changing a content type preserves existing rules until **Load defaults for this content type** is used. **Save** commits a profile draft; **Cancel** discards it. Deleting a profile does not delete library files. **Tools → Export Settings… / Import Settings…** transfers profile and General Settings; import confirms replacement and backs up existing settings first.
+Changing a content type preserves existing rules until **Load defaults for this content type** is used. **Save** commits a profile draft; **Cancel** discards it. Deleting a profile does not delete library files. **Tools → Export Settings… / Import Settings…** transfers profile and General Settings; import confirms replacement and backs up existing settings first. Before committed profile or General Settings changes, the app keeps the newest 10 complete pre-change snapshots locally. Use **Tools → Restore Settings Backup…** to choose a snapshot by date/time and reason; restoring also backs up the current configuration first. Backup failure stops the save. Manual export remains the primary portable backup. See the [automatic settings backup guide](docs/SETTINGS-BACKUPS.md).
 
 See the [filename pattern and layout guide](docs/FILENAME-PATTERNS.md).
 
@@ -74,7 +78,7 @@ See the [filename pattern and layout guide](docs/FILENAME-PATTERNS.md).
 
 General Settings holds shared preferred spellings and the editable **Universal lowercase title words** list. Enable **Title case** and **Smart title case** in a profile to use that word list. Preferred spelling/case exceptions apply across profiles; explicit removable labels take precedence.
 
-Filename hyphen-to-space conversion and whole-episode filename lowercasing have been removed. Use targeted replacement rules for deliberate conversions. Season/episode formatting and capitalization remain separate options. Music’s leading-“The” artist formatting and bucket-only ignore option are independent and default off.
+Filename hyphen-to-space conversion and whole-episode filename lowercasing have been removed. Use targeted replacement rules for deliberate conversions. Season/episode formatting and capitalization remain separate options. Music’s leading-“The” artist formatting and bucket-only ignore option are independent and default off. Number/symbol bucket settings and bucket-only leading-“The” handling are shown only while first-letter buckets are enabled; disabling buckets retains their values. Individual-track folders and artist formatting remain independent.
 
 ### Media Categories for video
 
@@ -124,21 +128,21 @@ Explicitly remembered corrections are local and profile-scoped. Recommendations 
 
 Previews freeze file identity, size, timestamps and SHA-256 along with parent/destination checks. Execution revalidates them. Collision checks and exclusive publication prevent replacing an existing destination; duplicate batch outputs and case/Unicode conflicts are blocked.
 
-Copies use verified temporary targets. Ordinary same-volume moves can use exclusive rename; cross-volume and tag-changing Magic moves use verified-copy preparation. Cancellation stops between files, so earlier successful operations remain completed. Batches are not atomic.
+Local copies use verified temporary targets. SMB destinations are detected automatically, check reported free space for the estimated batch before starting, and use exclusive destination creation followed by content verification, avoiding protected rename operations that may be unsupported by the share. Interrupted SMB transfers can leave incomplete files under their final names; sources are retained on failure. Magic tag changes are prepared on a staging copy before exclusive publication to SMB. A notice appears the first time a library is selected per saved profile, and red guidance remains beneath its location in Profile Settings. Existing SMB destinations are never overwritten. Ordinary same-volume moves can use exclusive rename; cross-volume and tag-changing Magic moves use verified-copy preparation. Cancellation stops between files, so earlier successful operations remain completed. Batches are not atomic. Copy/Move confirmation dialogs stay open during transfer, then show completed/failed counts and any errors until Done is selected. Cancel Transfer stops between files; completed files remain completed.
 
 **History & Recovery** records per-file results and interrupted operations, including reported staging/recovery paths. Guarded Undo is available only for supported operations and refuses changed files or occupied original paths. It is not a full file-backup system. Cross-volume undo requires a new reviewed operation; tag updates/purges have no Undo.
 
-Operation history expires after **30 days**. Explicitly remembered corrections persist separately. History cleanup does not delete source, destination, partial or recovery files. Settings backups are separate and currently have no automatic expiry.
+Operation history expires after **30 days**. Explicitly remembered corrections persist separately. History cleanup does not delete source, destination, partial or recovery files. Automatic settings snapshots are separate and retain the newest 10; manual exports and historical migration/import backups outside that folder are not rotated.
 
 **Tools → Clean Folder Names…** previews renaming selected direct child folders with their contents. It does not recursively reorganize folders.
 
 ## Development disclaimer
 
-Shelf Elf Librarian was developed using **OpenAI Codex**, with human direction and review. AI-assisted development and automated tests do not guarantee error-free behavior. This is alpha software; test changes on disposable copies with independent backups before renaming, moving, or updating or purging tags in an original library.
+Shelf Elf Librarian was developed using **OpenAI Codex**, with human direction and review. AI-assisted development and automated tests do not guarantee error-free behavior. This is beta software; test changes on disposable copies with independent backups before renaming, moving, or updating or purging tags in an original library.
 
-## Alpha limitations and validation
+## Beta limitations and validation
 
-Start with disposable files and keep backups of important originals. Build 60 passes **95 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
+Start with disposable files and keep backups of important originals. Beta 1 passes **99 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
 
 Known limits include concurrent directory-replacement races, network filesystem behavior, actual cross-volume/hardware failures and full attribute fidelity across differing filesystems. Automatic crash rollback/cleanup, coordinated sidecar/ROM sets, video tag writing, archive extraction, transcoding, full-library inventory and unattended filing are not implemented.
 
@@ -153,7 +157,7 @@ Use a Mac with a Swift 6 toolchain and the macOS SDK:
 open "outputs/Shelf Elf Librarian.app"
 ```
 
-The script builds the app and standalone fixture runner, runs the checks, generates license notices, packages the app and applies an ad hoc signature. It targets the build machine’s architecture; the supplied release is arm64, not a universal binary. Version/build labels come from `Info.plist`.
+The script builds the app and standalone fixture runner, runs the checks, generates license notices, packages the app and applies an ad hoc signature. It targets the build machine’s architecture; the supplied release is arm64, not a universal binary. The public label is **0.1.0 Beta 1**; release labels come from `Info.plist`. The internal build number is maintained separately for ordering.
 
 For isolated starter-profile review:
 

@@ -3,8 +3,38 @@ import FilerCore
 
 extension Model {
     func settingsArchive() -> SettingsArchive { SettingsArchive(profiles: profiles, general: universalPreferences, activeProfileID: activeID) }
+    @discardableResult
+    func backupConfiguration(_ reason: String) throws -> URL {
+        do { return try SettingsBackupStore(support: support).save(settingsArchive(), reason: reason) }
+        catch { throw fail("Settings were not changed because their automatic backup failed. " + error.localizedDescription) }
+    }
+    func persistProfiles(_ next: [Profile], reason: String) throws {
+        guard next != profiles else { return }
+        do { try SettingsBackupStore(support: support).writeProfiles(next, current: settingsArchive(), to: support.appendingPathComponent("profiles.json"), reason: reason) }
+        catch { throw fail("Settings could not be saved. " + error.localizedDescription) }
+    }
+    func replaceSettings(_ archive: SettingsArchive, reason: String, statusText: String) throws {
+        guard !busy else { throw fail("Wait for the current operation to finish.") }
+        let imported = try archive.validatedProfiles()
+        let generalData = try JSONEncoder().encode(archive.general)
+        let backup = try SettingsBackupStore(support: support).writeProfiles(imported, current: settingsArchive(), to: support.appendingPathComponent("profiles.json"), reason: reason)
+        AppEnvironment.defaults.set(generalData, forKey: "universalSpellingCasePreferences")
+        profiles = imported; universalPreferences = archive.general
+        HoverHelp.shared.timing = archive.general.hoverTiming ?? .immediate
+        mode = archive.general.filingAction
+        activeID = imported.contains(where: { $0.id == archive.activeProfileID }) ? archive.activeProfileID! : imported.first?.id ?? newProfile.id
+        items = []; selected = []; invalidate(); changeProfile()
+        status = statusText + ". Previous settings backed up: " + backup.path
+    }
     func exportSettings() {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = "Shelf Elf Settings.json"; panel.title = "Export Profiles & General Settings"
+        let timestamp = DateFormatter()
+        timestamp.locale = Locale(identifier: "en_US_POSIX")
+        timestamp.calendar = Calendar(identifier: .gregorian)
+        timestamp.timeZone = .current
+        timestamp.dateFormat = "yyyy.MM.dd-HH.mm"
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Shelf Elf Settings-\(timestamp.string(from: Date())).json"
+        panel.title = "Export Profiles & General Settings"
         WindowPresentation.choose(panel) { [self] response in
             guard response == .OK, let url = panel.url else { return }
             do {
@@ -29,15 +59,7 @@ extension Model {
                 WindowPresentation.confirm(alert) { [self] response in
                     guard response == .alertFirstButtonReturn else { return }
                     do {
-                        let backup = support.appendingPathComponent("Settings before import-\(UUID().uuidString).json")
-                        try JSONEncoder().encode(settingsArchive()).write(to: backup, options: .atomic)
-                        try JSONEncoder().encode(imported).write(to: support.appendingPathComponent("profiles.json"), options: .atomic)
-                        AppEnvironment.defaults.set(try JSONEncoder().encode(archive.general), forKey: "universalSpellingCasePreferences")
-                        profiles = imported; universalPreferences = archive.general
-                        HoverHelp.shared.timing = archive.general.hoverTiming ?? .immediate
-                        activeID = imported.contains(where: { $0.id == archive.activeProfileID }) ? archive.activeProfileID! : imported.first?.id ?? newProfile.id
-                        items = []; selected = []; invalidate(); changeProfile()
-                        status = "Settings imported. Prior settings backup: " + backup.path
+                        try replaceSettings(archive, reason: "Import settings", statusText: "Settings imported")
                     } catch { self.error = error.localizedDescription }
                 }
             } catch { self.error = error.localizedDescription }

@@ -135,6 +135,7 @@ public enum ProfileSetup {
     }
 }
 public struct SettingsArchive: Codable {
+    public var backupReason: String?
     public var version = 1
     public var created = Date()
     public var profiles: [Profile]

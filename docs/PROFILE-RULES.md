@@ -1,6 +1,6 @@
 # Profile rules, Magic and manual editing
 
-Current behavior: **0.1.0 Alpha, Build 60**. See the [README](../README.md) for setup and limitations, and the [pattern guide](FILENAME-PATTERNS.md) for mask syntax.
+Current behavior: **0.1.0 Beta 1**. See the [README](../README.md) for setup and limitations, and the [pattern guide](FILENAME-PATTERNS.md) for mask syntax.
 
 ## What you configure
 
