@@ -4,7 +4,7 @@
   <img src="Branding/README-Logo.png" alt="Shelf Elf Librarian — an elf librarian at a laptop in front of a bookshelf" width="720">
 </p>
 
-**0.1.0 Beta 1** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
+**0.1.0 Beta 2** · Native macOS 14+ · SwiftUI/AppKit · Apple Silicon download
 
 Your libraries, neatly shelved.
 
@@ -22,14 +22,23 @@ Copy/Move previews show destination groups and blocked rows before confirmation.
 
 ## Download and run
 
-Download the main **Shelf Elf Librarian** app from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-beta.1), unzip it, and open it on an Apple Silicon Mac running macOS 14 or later.
+Download **Shelf-Elf-Librarian-0.1.0-beta-2-arm64.dmg** from [GitHub Releases](https://github.com/natsteff/shelf-elf-librarian/releases/tag/v0.1.0-beta.2) on an Apple Silicon Mac running macOS 14 or later. Open the disk image, drag **Shelf Elf Librarian** onto **Applications**, eject the image, then launch the app from Applications.
+
+### Upgrading
+
+1. In the existing app, use **Tools → Export Settings…** for a portable settings backup.
+2. Quit all running copies, open the new DMG and drag the app onto Applications. Choose **Replace**.
+3. Eject the DMG and launch the installed app from Applications. Confirm **0.1.0 Beta 2** in the header and check your profiles and General Settings.
+
+Upgrades retain the main app’s bundle identifier and settings storage, including existing profiles, preferences, backups and history. Do not run the app from inside the mounted DMG or switch to the Fresh Install Test edition for everyday use. Future releases use this same manual DMG replacement process; no automatic updater is included. The workspace screenshots below the introduction show Beta 1; the main workspace layout is unchanged in Beta 2.
 
 This beta is locally ad hoc signed, **not Developer ID signed or notarized**. macOS may require approval through Finder’s Open action or System Settings → Privacy & Security. There is no automatic updater. Quit an older running copy before opening a replacement.
 
-The Beta 1 release also includes a **Fresh Install Test** edition with separate preferences, profiles and history. Use the main app normally; use the test edition only to examine first-run behavior and starter defaults. Neither edition includes your own library files or settings.
+The release also includes a **Fresh Install Test** edition with separate preferences, profiles and history. Use the main app normally; use the test edition only to examine first-run behavior and starter defaults. Neither edition includes your own library files or settings.
 
 ## What it does
 
+- **Suggested-entry review:** see the number of additions before loading built-in spelling/case entries. Newly added entries appear yellow in per-group reviews and the combined preview until Clear Highlights or closing settings. Save applies the draft; Cancel discards it.
 - **Review and rename:** editable filename proposals, red/blue difference highlighting, spelling suggestions, shared preferred spellings, title casing and targeted replacement rules.
 - **Organize libraries:** ordered filename patterns, editable components, folder/filename masks and classification-specific layouts. Copy/Move previews group files by destination folder.
 - **Route mixed videos:** optional Media Categories map movies, TV shows, documentaries and other categories to your own library folders. Categories can be added, removed and customized.
@@ -142,7 +151,7 @@ Shelf Elf Librarian was developed using **OpenAI Codex**, with human direction a
 
 ## Beta limitations and validation
 
-Start with disposable files and keep backups of important originals. Beta 1 passes **99 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
+Start with disposable files and keep backups of important originals. Beta 2 passes **99 disposable fixture scenarios** covering planning, execution, source/collision guards, cancellation, supported Undo, patterns, custom components, metadata, MP3 writes, Magic tag steps and history retention. These checks are not a release-safety certification; native GUI review remains manual.
 
 Known limits include concurrent directory-replacement races, network filesystem behavior, actual cross-volume/hardware failures and full attribute fidelity across differing filesystems. Automatic crash rollback/cleanup, coordinated sidecar/ROM sets, video tag writing, archive extraction, transcoding, full-library inventory and unattended filing are not implemented.
 
@@ -157,7 +166,9 @@ Use a Mac with a Swift 6 toolchain and the macOS SDK:
 open "outputs/Shelf Elf Librarian.app"
 ```
 
-The script builds the app and standalone fixture runner, runs the checks, generates license notices, packages the app and applies an ad hoc signature. It targets the build machine’s architecture; the supplied release is arm64, not a universal binary. The public label is **0.1.0 Beta 1**; release labels come from `Info.plist`. The internal build number is maintained separately for ordering.
+Run `./scripts/package-dmg.sh` after a successful build to create the standard main-app DMG and SHA-256 checksum under `outputs/releases/`. The packaging script refuses to overwrite an existing artifact.
+
+The build script builds the app and standalone fixture runner, runs the checks, generates license notices, packages the app and applies an ad hoc signature. It targets the build machine’s architecture; the supplied release is arm64, not a universal binary. The public label is **0.1.0 Beta 2**; release labels come from `Info.plist`. The internal build number is maintained separately for ordering.
 
 For isolated starter-profile review:
 

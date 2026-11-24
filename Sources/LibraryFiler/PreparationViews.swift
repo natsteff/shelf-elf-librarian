@@ -176,6 +176,30 @@ struct GeneralSettingsView: View {
     @State private var validation = ""
     @State private var confirmSuggestions = false
     @State private var suggestionsResult = ""
+    @State private var addedSuggestions: Set<String> = []
+    private var suggestionPreview: SuggestionLoadResult {
+        var preview = draft
+        return preview.appendSuggestions()
+    }
+    private func highlightedEntries(_ entries: [String]) -> AttributedString {
+        var result = AttributedString()
+        for (index, entry) in entries.enumerated() {
+            if index > 0 { result.append(AttributedString(", ")) }
+            var text = AttributedString(entry)
+            if addedSuggestions.contains(entry) {
+                text.backgroundColor = .yellow
+                text.foregroundColor = .black
+            }
+            result.append(text)
+        }
+        return result
+    }
+    private func loadSuggestions() {
+        let before = Set(draft.allEntries)
+        let result = draft.appendSuggestions()
+        addedSuggestions.formUnion(Set(draft.allEntries).subtracting(before))
+        suggestionsResult = result.summary
+    }
     private func groupInput(_ group: UniversalExceptionGroup) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(group.title).font(.headline)
@@ -185,6 +209,12 @@ struct GeneralSettingsView: View {
                 .padding(4).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.3)))
                 .accessibilityLabel(group.title)
+            let newEntries = UniversalPreferences.entries(draft.groups[group.id] ?? "").filter { addedSuggestions.contains($0) }
+            if !newEntries.isEmpty {
+                Text("New in this draft (\(newEntries.count)):").font(.callout)
+                Text(highlightedEntries(newEntries)).font(.body).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
     var body: some View {
@@ -194,7 +224,17 @@ struct GeneralSettingsView: View {
                 Spacer()
                 Button("Load Suggested Entries") { confirmSuggestions = true }
             }
-            if !suggestionsResult.isEmpty { Text(suggestionsResult).font(.caption).foregroundStyle(.secondary) }
+            if !suggestionsResult.isEmpty {
+                HStack(spacing: 12) {
+                    Text(suggestionsResult).font(.callout)
+                    Spacer()
+                    if !addedSuggestions.isEmpty {
+                        Button("Clear Highlights") { addedSuggestions.removeAll() }
+                    }
+                }
+                Text("New entries are highlighted in yellow in each group’s review and the combined preview until you clear highlights or close settings.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Toggle("Show filename differences", isOn: Binding(get: { draft.showFilenameDifferences ?? true }, set: { draft.showFilenameDifferences = $0 }))
@@ -215,7 +255,7 @@ struct GeneralSettingsView: View {
                     SettingsHint(text: "Enter your preferred spelling/case using commas or one entry per line. Groups organize the list only; every entry applies to all profiles. Examples are display-only. Fresh installations start with the suggested list; existing installations can add it using Load Suggested Entries. Exact duplicates are combined. Conflicting capitalization must be resolved before saving.")
                     ForEach(UniversalExceptionGroup.all) { groupInput($0) }
                     Text("Combined exceptions used by the app (\(draft.combinedEntries.count))").font(.headline)
-                    Text(draft.combined.isEmpty ? "No exceptions" : draft.combined)
+                    Text(draft.combined.isEmpty ? AttributedString("No exceptions") : highlightedEntries(draft.combinedEntries))
                         .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                         .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
@@ -247,9 +287,9 @@ struct GeneralSettingsView: View {
         .onAppear { draft = m.universalPreferences }
         .alert("Load suggested entries?", isPresented: $confirmSuggestions) {
             Button("Cancel", role: .cancel) {}
-            Button("Add to Draft") { suggestionsResult = draft.appendSuggestions().summary }
+            Button("Add to Draft") { loadSuggestions() }
         } message: {
-            Text("Append missing suggestions to their groups? Entries already present anywhere are skipped. Your preferred spellings and Other group are kept. Review the draft and click Save to apply, or Cancel to discard.")
+            Text("This will add \(suggestionPreview.added) new entries to the draft (\(suggestionPreview.existing) already present; \(suggestionPreview.conflicts) conflicting spellings kept). Entries already present anywhere are skipped. Your preferred spellings and Other group are kept. Review the draft and click Save to apply, or Cancel to discard.")
         }
     }
 }

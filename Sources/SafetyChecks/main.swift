@@ -1083,7 +1083,15 @@ final class FilerCoreTests {
         XCTAssertFalse(defaults.combinedEntries.contains("fun.")); XCTAssertFalse(defaults.combinedEntries.contains("HAIM"))
         var existing = UniversalPreferences(existingExceptions: "custom, dj, AC-DC")
         let beforeOther = existing.groups["other"]
+        let before = existing
+        var preview = existing
+        let expected = preview.appendSuggestions()
+        XCTAssertEqual(existing, before) // Confirmation preview must not mutate the draft.
         let result = existing.appendSuggestions()
+        XCTAssertEqual(result.added, expected.added)
+        XCTAssertEqual(result.existing, expected.existing)
+        XCTAssertEqual(result.conflicts, expected.conflicts)
+        XCTAssertEqual(Set(existing.allEntries).subtracting(Set(before.allEntries)).count, result.added)
         XCTAssertTrue(result.added > 0); XCTAssertTrue(result.conflicts > 0); XCTAssertTrue(result.existing > 0)
         XCTAssertEqual(existing.groups["other"], beforeOther)
         XCTAssertFalse(UniversalPreferences.entries(existing.groups["abbreviations"] ?? "").contains("DJ"))
